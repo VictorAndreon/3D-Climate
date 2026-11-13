@@ -16,10 +16,11 @@ test('chuva faz a nuvem baixa crescer e escurecer', () => {
 const top = (lv) => Math.max(...lv.map((l) => l.y + l.height));
 test('trovoada vira torre (cumulonimbus) empilhada só na camada baixa', () => {
   const tower = towerLevels(solidPuffShape({ ...base, rain: 8, storm: true })), plain = towerLevels(solidPuffShape({ ...base, rain: 8 }));
-  assert.equal(plain.length, 1); assert.equal(tower.length, 3);
+  assert.equal(plain.length, 1); assert.equal(tower.filter((l) => !l.anvil).length, 3);
   assert(top(tower) >= 2.2 * top(plain), `${top(tower)} vs ${top(plain)}`);
   for (const l of tower) assert(l.height / l.radius <= 1.2, 'nenhum nível esticado como ovo');
-  for (let i = 1; i < tower.length; i++) assert(tower[i].radius < tower[i - 1].radius && tower[i].y > tower[i - 1].y);
+  const body = tower.filter((l) => !l.anvil);
+  for (let i = 1; i < body.length; i++) assert(body[i].radius < body[i - 1].radius && body[i].y > body[i - 1].y);
   assert.equal(towerLevels(solidPuffShape({ ...base, layer: 1, storm: true })).length, 1);
 });
 test('camada média é achatada e escurece menos', () => {
@@ -34,3 +35,16 @@ test('valores finitos nas bordas', () => {
   }
 });
 test('duas camadas sólidas: baixa a 4, média a 7', () => assert.deepEqual(SOLID_LAYERS.map((l) => l.y), [4, 7]));
+test('qualquer chuva já deixa a nuvem visivelmente escura (não só a forte)', () => {
+  assert(solidPuffShape({ ...base, rain: 0.3 }).dark >= 0.45);
+  assert(solidPuffShape({ ...base, rain: 3 }).dark > solidPuffShape({ ...base, rain: 0.3 }).dark);
+  assert.equal(solidPuffShape({ ...base, rain: 0 }).dark, 0);
+});
+test('trovoada é a nuvem mais escura', () => assert.equal(solidPuffShape({ ...base, rain: 1, storm: true }).dark, 1));
+test('torre de trovoada termina em bigorna: nível do topo largo e achatado', () => {
+  const lv = towerLevels(solidPuffShape({ ...base, rain: 8, storm: true })), anvil = lv[lv.length - 1];
+  assert(anvil.anvil === true);
+  assert(anvil.radius > 1.4 * lv[0].radius, 'bigorna mais larga que a base da torre');
+  assert(anvil.height / anvil.radius <= 0.45, 'bigorna achatada');
+  assert(anvil.y >= Math.max(...lv.slice(0, -1).map((l) => l.y + 0.8 * l.height)), 'bigorna no topo');
+});

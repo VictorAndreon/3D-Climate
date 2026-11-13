@@ -23,18 +23,19 @@ export function viewPosition({ az, polar, dist }, target = TARGET) {
   );
 }
 
-export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) {
+export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar = 0 } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
   let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
   renderer.setPixelRatio(pixelRatio);
   renderer.setClearColor(0x070b12, 1);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(36, 1, 1, 600);
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 600);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.minDistance = 18;
+  controls.minDistance = 3;                // dá pra descer até dentro das nuvens
+  controls.zoomToCursor = true;
   controls.maxDistance = 135;
   controls.screenSpacePanning = false;
   controls.zoomSpeed = 0.8;
@@ -43,10 +44,10 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) 
     const v = VIEWS[name] ?? VIEWS.se;
     // inclinação entre ~15° e ~80° acima do horizonte; `top` (só roteiros) desliga o limite
     controls.minPolarAngle = name === 'top' ? 0 : 10 * DEG;
-    controls.maxPolarAngle = 75 * DEG;
+    controls.maxPolarAngle = 88 * DEG;     // quase rente ao chão: nuvem em cima, chuva no meio, solo embaixo
     const target = look ? new THREE.Vector3(look.x, 0, look.z) : TARGET;      // dist/look: só para os roteiros
     controls.target.copy(target);
-    camera.position.copy(viewPosition(dist ? { ...v, dist } : v, target));
+    camera.position.copy(viewPosition({ ...v, ...(dist ? { dist } : {}), ...(polar ? { polar: polar * DEG } : {}) }, target));
     camera.lookAt(target);
     controls.update();
   }

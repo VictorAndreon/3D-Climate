@@ -19,7 +19,10 @@ export function solidPuffShape({ layer, cover01, presence, rain, storm, size01 }
   let height = radius * L.hf * (0.75 + 0.55 * c) * (L.towers ? 1 + 0.6 * wet : 1);
   const stack = L.towers && storm ? STACK : 1;
   if (stack > 1) { radius *= TOWER_R; height = Math.min(height * TOWER_R, radius * 1.2); }
-  return { radius, height, dark: clamp(rain / 10, 0, 1) * L.darken, stack };
+  // qualquer chuva já é cinza (legível de longe); escurece mais com a intensidade; trovoada = chumbo
+  const wetDark = rain > 0 ? 0.45 + 0.55 * clamp(rain / 8, 0, 1) : 0;
+  const dark = (L.towers && storm ? 1 : wetDark) * L.darken;
+  return { radius, height, dark, stack };
 }
 
 /** Níveis de um puff: 1 cacho, ou a torre de cachos empilhados. y = deslocamento da base. */
@@ -31,5 +34,7 @@ export function towerLevels({ radius, height, stack = 1 }) {
     out.push({ y, radius: r, height: h });
     y += h * 0.95;
   }
+  // cumulonimbus: bigorna larga e achatada no topo
+  if (stack > 1) { const top = out[out.length - 1]; out.push({ y: top.y + top.height * 0.8, radius: radius * 1.6, height: radius * 1.6 * 0.32, anvil: true }); }
   return out;
 }

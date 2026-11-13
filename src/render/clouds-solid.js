@@ -57,7 +57,7 @@ attribute vec4 aState;  // -, escurecimento, -, -
 attribute vec4 aWind;   // amplitude x, amplitude z, fase em uT0, velocidade angular
 uniform float uTime, uT0, uPuff;
 uniform vec4 uFlash[${MAX_FLASH}];
-varying vec3 vN; varying vec3 vW; varying float vDark; varying float vFlash; varying float vBottom; varying float vAO;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vDark; varying float vFlash; varying float vBottom; varying float vAO;
 void main() {
   float ph = aWind.z + aWind.w * (uTime - uT0);
   vec2 amp = aWind.xy, perp = vec2(-amp.y, amp.x) * 0.3;
@@ -74,6 +74,7 @@ void main() {
   if (w.y < c.y) { w.y = c.y; vBottom = 1.0; }          // …e o que sobra embaixo vira base chata
   vN = normalize(n / max(s, vec3(1e-3)));
   vW = w;
+  vL = p * 1.7 + aShape.z * 13.0;                     // coordenada local estável (a textura não "ferve" com o vento)
   vDark = aState.y;
   float f = 0.0;
   for (int i = 0; i < ${MAX_FLASH}; i++) {
@@ -85,10 +86,20 @@ void main() {
 }`;
 const FRAG = /* glsl */`
 uniform vec3 uSunDir, uLit, uShade, uDarkLit, uDarkShade, uFlashColor;
-varying vec3 vN; varying vec3 vW; varying float vDark; varying float vFlash; varying float vBottom; varying float vAO;
+uniform float uNear0, uNear1;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vDark; varying float vFlash; varying float vBottom; varying float vAO;
 void main() {
-  vec3 n = normalize(vN);
-  n = normalize(mix(n, vec3(0.0, -1.0, 0.0), vBottom));
+  vec3 V = normalize(cameraPosition - vW);
+  vec3 ng = normalize(mix(normalize(vN), vec3(0.0, -1.0, 0.0), vBottom));
+  // cobertura: borda da bolha se desfaz (algodão, não isopor) e a nuvem perto da câmera vira neblina
+  float a = mix(smoothstep(0.0, 0.42, dot(ng, V)), 1.0, vBottom);
+  a *= smoothstep(uNear0, uNear1, distance(cameraPosition, vW));
+  if (a < 0.02) discard;
+  // ondulação leve na superfície
+  vec3 q = vL;
+  vec3 bump = vec3(sin(q.y * 3.1 + q.z * 1.7), sin(q.z * 2.9 + q.x * 1.3), sin(q.x * 2.3 + q.y * 2.1))
+            + 0.5 * vec3(sin(q.z * 6.3 - q.y * 4.1), sin(q.x * 5.7 + q.z * 3.3), sin(q.y * 6.1 - q.x * 4.7));
+  vec3 n = normalize(ng + 0.16 * bump * (1.0 - vBottom));
   float wrap = clamp((dot(n, uSunDir) + 0.3) / 1.3, 0.0, 1.0);   // luz "envolvente": nuvem não tem lado preto
   float sky = 0.5 + 0.5 * n.y;
   float light = clamp(wrap * 0.8 + sky * 0.25 - 0.1, 0.0, 1.0);
@@ -96,14 +107,13 @@ void main() {
   light *= mix(0.55, 1.0, vAO);
   vec3 lit = mix(uLit, uDarkLit, vDark), shade = mix(uShade, uDarkShade, vDark);
   vec3 col = mix(shade, lit, light);
-  vec3 V = normalize(cameraPosition - vW);
   float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0);
   col += rim * 0.16 * lit * (1.0 - vBottom);                       // borda clara, cara de algodão
   float back = max(dot(-V, uSunDir), 0.0);                          // contra o sol: borda acesa (silver lining)
   float edge = pow(1.0 - max(dot(n, V), 0.0), 1.6);
   col += uLit * edge * back * back * 0.75 * (1.0 - vBottom) * (1.0 - 0.6 * vDark);
   col += uFlashColor * min(vFlash, 1.5);
-  gl_FragColor = vec4(min(col, vec3(1.0)), 1.0);
+  gl_FragColor = vec4(min(col, vec3(1.0)), a);
 }`;
 // sombra no mapa: disco suave sob cada puff, deslocado pela direção do sol
 const SHADOW_VERT = /* glsl */`
@@ -145,7 +155,7 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
     }
   });
 
-  const CAP = N * 2;                                             // espaço para os níveis extras das torres
+  const CAP = N * 3;                                             // espaço para os níveis extras das torres (3 + bigorna)
   const mk = (size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(CAP * size), size); a.setUsage(THREE.DynamicDrawUsage); return a; };
   const aPos = mk(3), aShape = mk(4), aState = mk(4), aWind = mk(4);
   const sphere = cumulusGeometry(), geom = new THREE.InstancedBufferGeometry();
@@ -165,8 +175,10 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
     uLit: { value: new THREE.Vector3(1, 1, 1) }, uShade: { value: new THREE.Vector3(0.62, 0.69, 0.82) },
     uDarkLit: { value: new THREE.Vector3(0.38, 0.4, 0.45) }, uDarkShade: { value: new THREE.Vector3(0.16, 0.18, 0.22) },
     uFlashColor: { value: new THREE.Vector3(0.9, 0.93, 1.0) },
+    uNear0: { value: 1.2 }, uNear1: { value: 5.5 },           // dentro de ~12 km da câmera a nuvem se dissolve
   };
-  const mesh = new THREE.Mesh(geom, new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, toneMapped: false }));
+  // alpha to coverage: transparência parcial pelo MSAA, sem ordenação (a nuvem continua no passe opaco)
+  const mesh = new THREE.Mesh(geom, new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, toneMapped: false, alphaToCoverage: true }));
   mesh.frustumCulled = false; mesh.name = 'clouds-solid';
   const shadowUniforms = { uTime: uniforms.uTime, uT0: uniforms.uT0, uPuff: uniforms.uPuff, uSunDir: uniforms.uSunDir, uStrength: { value: 0.14 } };
   const shadow = new THREE.Mesh(sgeom, new THREE.ShaderMaterial({
@@ -204,7 +216,7 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
         if (k >= CAP) break;
         P[k * 3] = sx[i]; P[k * 3 + 1] = sy[i] + lv.y; P[k * 3 + 2] = sz[i];
         S[k * 4] = lv.radius; S[k * 4 + 1] = lv.height; S[k * 4 + 2] = (sseed[i] + lv.y * 0.37) % 1;
-        St[k * 4] = presence; St[k * 4 + 1] = shape.dark;
+        St[k * 4] = presence; St[k * 4 + 1] = lv.anvil ? shape.dark * 0.3 : shape.dark;   // topo da bigorna pega sol
         W[k * 4] = ax; W[k * 4 + 1] = az; W[k * 4 + 2] = phase[i]; W[k * 4 + 3] = omega[i];
         k++;
       }

@@ -26,7 +26,7 @@ const params = new URLSearchParams(location.search);
 const DEBUG = params.get('debug') === '1';
 // tetos do nível alto: 6.000 puffs; 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
 const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350 };
-const SOLID = params.get('nuvens') === 'solidas';
+const SOLID = params.get('nuvens') !== 'sprite';        // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -70,7 +70,7 @@ async function boot() {
 
 function createView(canvas) {
   const look = params.get('look')?.split(',').map(Number);
-  return createScene(canvas, { cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), look: look ? toScene(look[0], look[1]) : null });
+  return createScene(canvas, { cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), polar: Number(params.get('polar') ?? 0), look: look ? toScene(look[0], look[1]) : null });
 }
 
 async function run(geo, grid, view) {

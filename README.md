@@ -25,7 +25,9 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 
 Teclado: espaço = play/pause, ← → = ±1 h, Home = agora.
 
-Protótipo: `?nuvens=solidas` troca as nuvens baixas e médias por cachos 3D opacos (maquete), com torres empilhadas onde há trovoada. Os cirros continuam em sprite translúcido. Combina com os outros modos, por exemplo `/?fixture=1&nuvens=solidas`.
+As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde há trovoada; os cirros são sprites translúcidos. `?nuvens=sprite` volta ao visual antigo, todo em sprite.
+
+Dá pra descer a câmera até quase rente ao chão e chegar bem perto: de lado se vê nuvem em cima, chuva no meio e solo embaixo; perto da câmera a nuvem vira neblina, então dá pra atravessá-la.
 
 Parâmetros só para os roteiros de verificação: `t=<horas após agora>`, `cam=top|se|sw|ne|nw`, `dist=`, `look=lon,lat`.
 
@@ -131,5 +133,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 - A faixa de chuva sobre o trilho tem opacidade proporcional à fração da grade molhada (com dado real, quase toda hora tem chuva em algum ponto e a faixa ficaria inteira azul).
 - Rótulo da linha do tempo em passos de 10 minutos. Play no fim da faixa recomeça de "agora".
 - Zoom-out máximo de 135 unidades (o plano dizia 110, mas o estado não cabia visto de cima).
+- **Mudança pedida por você no §8:** a câmera desce até 2° do horizonte (o design dizia ~15°) e chega a 3 unidades (30 km) do alvo, com zoom em direção ao cursor. Assim dá pra ver as camadas de lado e entrar embaixo das nuvens.
+- Nuvens sólidas: chuva sempre cinza (a partir de 45% de escurecimento, mais escura com a intensidade), trovoada em chumbo com o topo da bigorna claro; borda das bolhas e nuvem a menos de ~12–55 km da câmera se desfazem por alpha to coverage (MSAA), sem sair do passe opaco.
 - Tooltip faz raycast na peça do estado, não no plano: fora do RS ele some, mesmo havendo dado na borda da grade.
 - No celular a legenda vira uma fileira de ícones acima do rodapé.

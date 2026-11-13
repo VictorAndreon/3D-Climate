@@ -69,7 +69,7 @@ void main() {
   float variant = floor(aShape.z * 4.0);
   vTile = vec2(mod(variant, 2.0), floor(variant / 2.0)) * 0.5;
   vUv = uv; if (fract(aShape.z * 7.0) > 0.5) vUv.x = 1.0 - vUv.x;
-  vAlpha = aShape.w * aState.x;
+  vAlpha = aShape.w * aState.x * smoothstep(2.0, 9.0, -mv.z);   // perto da câmera vira neblina
   vDark = aState.y;
   vY = uv.y;
   float f = 0.0;
