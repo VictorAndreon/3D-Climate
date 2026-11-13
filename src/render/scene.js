@@ -85,8 +85,18 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) 
   function stop() { running = false; cancelAnimationFrame(raf); }
   document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));   // aba oculta: laço para
 
+  // ponteiro -> ponto sobre um objeto da cena (usado pelo tooltip com a peça do estado)
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function pick(object, clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObject(object, false)[0];
+    return hit ? { x: hit.point.x, z: hit.point.z } : null;
+  }
+
   return {
-    scene, camera, controls, renderer, setView, start, stop,
+    scene, camera, controls, renderer, setView, start, stop, pick,
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,

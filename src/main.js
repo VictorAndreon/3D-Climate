@@ -12,6 +12,8 @@ import { syntheticSeries } from './data/synthetic.js';
 import { createDebug, createGridDots } from './ui/debug.js';
 import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
+import { createTooltip } from './ui/tooltip.js';
+import { createLegend } from './ui/legend.js';
 import { loadWeather } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -58,6 +60,10 @@ async function boot() {
   const clock = createClock({ tNow, tEnd72: Math.min(tNow + 72, field.nT - 1), tEndAll: field.nT - 1 });
   if (params.has('t')) { const off = Number(params.get('t')); if (off > 72) clock.setRange('7d'); clock.seek(tNow + off); }   // só roteiros: abre pausado nesse instante
   createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.anyRainByHour() });
+  createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
+  createTooltip(document.getElementById('tooltip'), {
+    canvas: view.renderer.domElement, pick: (x, y) => view.pick(map.userData.land, x, y), field, clock, municipios: geo.municipios,
+  });
 
   // slots só onde há dado: dentro da célula de algum nó da grade
   const bounds = sceneBounds(grid);
