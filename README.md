@@ -133,6 +133,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 **Interface**
 - Abre pausado em "agora", com voo de câmera de 1,8 s (qualquer interação cancela).
 - A faixa de chuva sobre o trilho tem opacidade proporcional à fração da grade molhada (com dado real, quase toda hora tem chuva em algum ponto e a faixa ficaria inteira azul).
+- **Mudança pedida por você no §8:** 1× = 1 h de previsão a cada 3 s (o design dizia 1 h/s); 0,5× e 4× mantêm a proporção (6 s e 0,75 s por hora). Ajuste em `HOURS_PER_SEC` no `clock.js`.
 - Rótulo da linha do tempo em passos de 10 minutos. Play no fim da faixa recomeça de "agora".
 - Zoom-out máximo de 135 unidades (o plano dizia 110, mas o estado não cabia visto de cima).
 - **Mudança pedida por você no §8:** a câmera desce até 2° do horizonte (o design dizia ~15°) e chega a 3 unidades (30 km) do alvo, com zoom em direção ao cursor. Assim dá pra ver as camadas de lado e entrar embaixo das nuvens.

@@ -15,7 +15,7 @@ const { serve, launch, open } = require('./lib.cjs');
 
   await page.click('.tl-play'); await page.waitForTimeout(700);
   let c = await clock(page);
-  check('play avança a linha do tempo', c.playing && c.t > c0.t + 0.2, `t ${c0.t.toFixed(2)} -> ${c.t.toFixed(2)}`);
+  check('play avança a linha do tempo', c.playing && c.t > c0.t + 0.05, `t ${c0.t.toFixed(2)} -> ${c.t.toFixed(2)}`);
 
   await page.mouse.move(640, 200);                       // tira o foco visual do botão
   await page.evaluate(() => document.activeElement?.blur());
