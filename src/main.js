@@ -7,7 +7,8 @@ import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
 import { makeSlots } from './render/slots.js';
 import { makeGrid } from './data/grid.js';
-import { analyticField } from './data/analytic.js';
+import { createWeatherField } from './data/weather-field.js';
+import { syntheticSeries } from './data/synthetic.js';
 import { createDebug } from './ui/debug.js';
 import { toScene, toLonLat, CELL_X, CELL_Z } from './geo/projection.js';
 
@@ -37,7 +38,7 @@ async function boot() {
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
   view.scene.add(lights.hemi, lights.sun);
 
-  const field = analyticField({ startUnix: Math.floor(Date.now() / 3600000) * 3600 });
+  const field = createWeatherField(grid, syntheticSeries(grid, Math.floor(Date.now() / 3600000) * 3600));
   const state = { t: Number(params.get('t') ?? 0), playing: true };
 
   // slots só onde há dado: dentro da célula de algum nó da grade
