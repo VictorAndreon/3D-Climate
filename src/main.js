@@ -76,7 +76,7 @@ async function run(geo, grid, view) {
   const tNow = Math.min(Math.max((data.nowUnix - field.times[0]) / 3600, 0), field.nT - 1);
   const clock = createClock({ tNow, tEnd72: Math.min(tNow + 72, field.nT - 1), tEndAll: field.nT - 1 });
   if (params.has('t')) { const off = Number(params.get('t')); if (off > 72) clock.setRange('7d'); clock.seek(tNow + off); }   // só roteiros: abre pausado nesse instante
-  createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.anyRainByHour() });
+  createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.rainShareByHour() });
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
   createTooltip(document.getElementById('tooltip'), {
     canvas: view.renderer.domElement, pick: (x, y) => view.pick(map.userData.land, x, y), field, clock, municipios: geo.municipios,

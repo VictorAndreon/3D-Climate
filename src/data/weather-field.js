@@ -94,5 +94,12 @@ export function createWeatherField(grid, series) {
     return out;
   }
 
-  return { nT, times, sample, rain, storm, cellInfo, activeHour, anyRainByHour };
+  /** Fração dos pontos da grade molhados em cada hora (intensidade da faixa de chuva da linha do tempo). */
+  function rainShareByHour() {
+    const out = new Float32Array(nT);
+    for (let p = 0; p < series.nP; p++) for (let h = 0; h < nT; h++) if (precip[p * nT + h] >= WET_MM) out[h] += 1 / series.nP;
+    return out;
+  }
+
+  return { nT, times, sample, rain, storm, cellInfo, activeHour, anyRainByHour, rainShareByHour };
 }

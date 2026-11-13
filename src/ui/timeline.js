@@ -38,13 +38,16 @@ export function createTimeline(el, { clock, times, rainByHour }) {
       d.append(h('span', '', fmtDay(unixAt(i))));
       days.append(d);
     }
-    // precip[i] cobre o intervalo (i-1, i]: junta horas consecutivas em um segmento só
-    let start = null;
-    const flush = (end) => { if (start == null) return; const s = h('div', 'tl-wet'); const a = Math.max(pct(start), 0), b = Math.min(pct(end), 100); s.style.left = `${a}%`; s.style.width = `${Math.max(b - a, 0.3)}%`; rain.append(s); start = null; };
+    // precip[i] cobre o intervalo (i-1, i]: um segmento por hora com chuva em algum ponto;
+    // a opacidade cresce com a fração do estado que está molhada (30% da grade já é faixa cheia)
     for (let i = Math.max(1, Math.floor(clock.tMin)); i <= Math.ceil(clock.tMax) && i < rainByHour.length; i++) {
-      if (rainByHour[i]) { if (start == null) start = i - 1; } else flush(i - 1);
+      if (!(rainByHour[i] > 0)) continue;
+      const a = Math.max(pct(i - 1), 0), b = Math.min(pct(i), 100);
+      if (b <= a) continue;
+      const seg = h('div', 'tl-wet'); seg.style.left = `${a}%`; seg.style.width = `${b - a + 0.05}%`;
+      seg.style.opacity = String(0.18 + 0.82 * Math.min(1, rainByHour[i] / 0.3));
+      rain.append(seg);
     }
-    flush(Math.min(Math.ceil(clock.tMax), rainByHour.length - 1));
     range.textContent = clock.range === '72h' ? '7 dias' : '72 h';
     range.title = clock.range === '72h' ? 'Mostrar os 7 dias de previsão' : 'Mostrar só as próximas 72 h';
   }

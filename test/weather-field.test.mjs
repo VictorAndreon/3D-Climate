@@ -120,3 +120,8 @@ test('anyRainByHour marca as horas com alguma célula molhada', () => {
   const a = w.anyRainByHour();
   assert.equal(a.length, NT); assert.equal(a[6], 1); assert.equal(a[9], 0); assert.equal(a[5], 0);
 });
+test('rainShareByHour: fração dos pontos molhados em cada hora', () => {
+  const w = createWeatherField(grid, seriesWith(grid, (p, h) => (h === 6 && p < 16 ? 1 : h === 9 ? 0.05 : 0)));
+  const s = w.rainShareByHour();
+  assert.equal(s.length, NT); near(s[6], 16 / 64, 1e-6); assert.equal(s[9], 0); assert.equal(s[5], 0);
+});

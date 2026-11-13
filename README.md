@@ -45,7 +45,7 @@ node tools/gate-ui.cjs
 node tools/gate-final.cjs
 ```
 
-- `npm test`: 150 testes dos módulos puros (`node --test`), incluindo a propriedade A1 com 20.000 amostras.
+- `npm test`: 151 testes dos módulos puros (`node --test`), incluindo a propriedade A1 com 20.000 amostras.
 - `gate-rain`: visto de cima, em 5 horários, todo traço de chuva desenhado cai em célula cujo dado bruto é molhado.
 - `gate-ui`: play, scrub, velocidade, teclado, tooltip, selo, celular.
 - `gate-final`: caminho ao vivo + cache com a API interceptada (11 requisições na primeira carga, zero na segunda, primeiro quadro, fallbacks, nenhum host externo além da API).
@@ -84,11 +84,11 @@ Nada disto foi provado daqui, e os números de fps em Chromium headless **não**
 2. **fps no notebook com GPU integrada.** Abra `/?debug=1`, dê play e gire a câmera. A qualidade adaptativa desce de
    nível sozinha se o quadro passar de 20 ms; o painel mostra o nível.
 3. **Consumo de cota.** Uma carga pede 546 pontos em 11 requisições. Os limites que o design cita (600/min, 5 mil/h,
-   10 mil/dia) vieram de memória e não foram conferidos. Ao gravar a fixture, a API respondeu
-   `Daily API request limit exceeded` para este container, cujo IP de saída é compartilhado; não dá para saber
-   daqui se o seu IP terá folga.
-4. **Aparência com dado real.** Toda a verificação visual foi feita com o campo sintético (faixa de chuva + núcleo
-   de trovoada). Frente fria real vira um cobertor sobre o estado, como o design avisa.
+   10 mil/dia) vieram de memória e não foram conferidos. Ao gravar a fixture, a API respondeu uma vez
+   `Daily API request limit exceeded` para este container (IP de saída compartilhado) e aceitou a carga inteira
+   uma hora depois; não dá para saber daqui quanta folga o seu IP terá.
+4. **Aparência no dia a dia.** A verificação visual foi feita com o campo sintético e com uma única gravação real
+   (`/?fixture=1`). Frente fria real vira um cobertor sobre o estado, como o design avisa.
 
 ## Decisões
 
@@ -98,7 +98,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 - Three.js fixado em 0.187.0 (última no npm), vendorizado: `three.module.js`, `three.core.js` e `OrbitControls.js`.
 - A malha tem 496 municípios (o design dizia 497) e a grade tem 546 pontos: 401 dentro do estado + borda de 1 célula (o design esperava 300–400).
 - `assets/rs.json` com simplificação de 40% no mapshaper: 229 KB.
-- `assets/fixture.json` é **sintética** (2,9 MB): a API recusou por cota diária na hora de gravar. `npm run fixture` regrava a real.
+- `assets/fixture.json` é uma **resposta real** do Open-Meteo gravada em 13/11/2026 às 12:00 (546 pontos × 168 h, 2,9 MB; tem chuva nas 168 h e trovoada em 118). A primeira tentativa de gravar falhou com `Daily API request limit exceeded`; a segunda, uma hora depois, passou.
 - A API devolve a coordenada ajustada à grade do modelo; os locais são mapeados para os pontos **pela ordem do pedido**.
 - Erro da API (HTTP 400/429 ou `{"error":true}`), lote incompleto e série torta contam como falha de rede.
 
@@ -124,6 +124,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 
 **Interface**
 - Abre pausado em "agora", com voo de câmera de 1,8 s (qualquer interação cancela).
+- A faixa de chuva sobre o trilho tem opacidade proporcional à fração da grade molhada (com dado real, quase toda hora tem chuva em algum ponto e a faixa ficaria inteira azul).
 - Rótulo da linha do tempo em passos de 10 minutos. Play no fim da faixa recomeça de "agora".
 - Zoom-out máximo de 135 unidades (o plano dizia 110, mas o estado não cabia visto de cima).
 - Tooltip faz raycast na peça do estado, não no plano: fora do RS ele some, mesmo havendo dado na borda da grade.

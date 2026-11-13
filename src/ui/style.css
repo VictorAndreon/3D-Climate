@@ -20,7 +20,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradi
 .tl-rail { position: absolute; left: 0; right: 0; top: 24px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .14); }
 .tl-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); opacity: .55; }
 .tl-rain { position: absolute; left: 0; right: 0; top: -5px; height: 3px; }
-.tl-wet { position: absolute; top: 0; height: 3px; border-radius: 2px; background: #4f9dff; }
+.tl-wet { position: absolute; top: 0; height: 3px; background: #4f9dff; }
 .tl-days { position: absolute; left: 0; right: 0; top: 0; height: 36px; pointer-events: none; }
 .tl-day { position: absolute; top: 2px; bottom: 0; width: 1px; background: rgba(255, 255, 255, .22); }
 .tl-day span { position: absolute; left: 5px; top: -2px; font-size: 11px; color: var(--dim); white-space: nowrap; }
