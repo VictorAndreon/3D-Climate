@@ -1,0 +1,16 @@
+{
+  "name": "rs-tempo-3d",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "vendor": "node tools/vendor-three.mjs",
+    "geo": "node tools/build-geo.mjs",
+    "fixture": "node tools/record-fixture.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "mapshaper": "0.7.101",
+    "three": "0.187.0"
+  }
+}

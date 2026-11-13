@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RS Tempo 3D</title>
+  <link rel="stylesheet" href="./src/ui/style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="fatal" hidden></div>
+  <div id="badge" hidden></div>
+  <div id="legend" hidden></div>
+  <div id="debug" hidden></div>
+  <div id="tooltip" hidden></div>
+  <footer id="timeline" hidden></footer>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
