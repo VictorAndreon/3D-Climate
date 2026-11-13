@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createScene } from './render/scene.js';
 import { createMap } from './render/map.js';
 import { createClouds } from './render/clouds.js';
+import { createSolidClouds } from './render/clouds-solid.js';
 import { createRain, MAX_PER_COLUMN } from './render/rain.js';
 import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
@@ -24,7 +25,8 @@ import { toScene, toLonLat, CELL_X, CELL_Z } from './geo/projection.js';
 const params = new URLSearchParams(location.search);
 const DEBUG = params.get('debug') === '1';
 // tetos do nível alto: 6.000 puffs; 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
-const SLOT_COUNTS = { clouds: [2600, 2000, 1400], rain: 1350 };
+const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350 };
+const SOLID = params.get('nuvens') === 'solidas';
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -33,6 +35,20 @@ function sceneBounds(grid) {
     minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minZ = Math.min(minZ, s.z); maxZ = Math.max(maxZ, s.z);
   }
   return { minX: minX - CELL_X, maxX: maxX + CELL_X, minZ: minZ - CELL_Z, maxZ: maxZ + CELL_Z };
+}
+
+/** Junta nuvens sólidas (baixa, média) e sprites (alta) numa interface só. */
+function combineClouds(solid, high) {
+  const both = [solid, high];
+  return {
+    objects: [solid.shadow, solid.mesh, high.shadow, high.mesh],
+    update: (f, t, now) => both.forEach((c) => c.update(f, t, now)),
+    frame: (now, cam) => both.forEach((c) => c.frame(now, cam)),
+    setFlashes: (l) => both.forEach((c) => c.setFlashes(l)),
+    setSky: (s) => both.forEach((c) => c.setSky(s)),
+    setQuality: (q) => both.forEach((c) => c.setQuality(q)),
+    visibleCount: () => solid.visibleCount() + high.visibleCount(),
+  };
 }
 
 function fatal(msg) {
@@ -85,10 +101,15 @@ async function run(geo, grid, view) {
   // slots só onde há dado: dentro da célula de algum nó da grade
   const bounds = sceneBounds(grid);
   const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
-  const clouds = createClouds({ slotsByLayer: SLOT_COUNTS.clouds.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept })) });
+  const slotsFor = (counts) => counts.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept }));
+  const clouds = SOLID ? combineClouds(
+    createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }),
+    // cirros continuam finos e translúcidos (sprite), só na camada alta
+    createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), makeSlots({ ...bounds, count: SLOT_COUNTS.clouds[2], seed: 103, accept })] }),
+  ) : createClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.clouds) });
   const rain = createRain({ slots: makeSlots({ ...bounds, count: SLOT_COUNTS.rain, seed: 201, accept }) });
   const lightning = createLightning({ grid });
-  view.scene.add(clouds.shadow, rain.mesh, lightning.object3d, clouds.mesh);
+  view.scene.add(...clouds.objects ?? [clouds.shadow, clouds.mesh], rain.mesh, lightning.object3d);
 
   // qualidade adaptativa: desce com quadro lento, sobe só depois de 10 s folgados
   const quality = createQuality({});

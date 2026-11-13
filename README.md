@@ -25,6 +25,8 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 
 Teclado: espaço = play/pause, ← → = ±1 h, Home = agora.
 
+Protótipo: `?nuvens=solidas` troca as nuvens baixas e médias por cachos 3D opacos (maquete), com torres empilhadas onde há trovoada. Os cirros continuam em sprite translúcido. Combina com os outros modos, por exemplo `/?fixture=1&nuvens=solidas`.
+
 Parâmetros só para os roteiros de verificação: `t=<horas após agora>`, `cam=top|se|sw|ne|nw`, `dist=`, `look=lon,lat`.
 
 ## Testes e portões
