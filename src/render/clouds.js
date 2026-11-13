@@ -5,9 +5,9 @@ import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 import { clamp, smoothstep, mulberry32 } from '../util/rng.js';
 
 export const LAYERS = [
-  { key: 'low', y: 4, yJit: 0.55, wMin: 2.2, wMax: 3.4, flat: 0.8, alpha: 0.92, darken: 1 },
-  { key: 'mid', y: 7, yJit: 0.4, wMin: 2.6, wMax: 4.0, flat: 0.55, alpha: 0.7, darken: 0.65 },
-  { key: 'high', y: 10, yJit: 0.3, wMin: 3.5, wMax: 6.0, flat: 0.3, alpha: 0.35, darken: 0 },
+  { key: 'low', y: 4, yJit: 0.55, wMin: 2.8, wMax: 4.3, flat: 0.8, alpha: 0.92, darken: 1 },
+  { key: 'mid', y: 7, yJit: 0.4, wMin: 3.2, wMax: 4.8, flat: 0.55, alpha: 0.7, darken: 0.65 },
+  { key: 'high', y: 10, yJit: 0.3, wMin: 4.5, wMax: 7.5, flat: 0.3, alpha: 0.35, darken: 0 },
 ];
 const MAX_FLASH = 8;
 const ORBIT_AMP = 0.35 * (CELL_X + CELL_Z) / 2;   // 0,35 célula
@@ -94,6 +94,29 @@ void main() {
   gl_FragColor = vec4(min(col, vec3(1.0)) * a, a);   // alpha pré-multiplicado
 }`;
 
+// Sombra das nuvens no mapa: mesma geometria instanciada, achatada no chão e deslocada pela direção do sol.
+const SHADOW_VERT = /* glsl */`
+attribute vec3 aPos; attribute vec4 aShape; attribute vec4 aState; attribute vec4 aWind;
+uniform float uTime, uT0, uPuff, uStrength; uniform vec3 uSunDir;
+varying vec2 vUv; varying float vAlpha;
+void main() {
+  float ph = aWind.z + aWind.w * (uTime - uT0);
+  vec2 amp = aWind.xy, perp = vec2(-amp.y, amp.x) * 0.3;
+  vec2 c = aPos.xz + amp * cos(ph) + perp * sin(ph) - uSunDir.xz / max(uSunDir.y, 0.35) * aPos.y * 0.6;
+  float size = aShape.x * (0.55 + 0.45 * aState.x) * uPuff * 1.15;
+  vUv = uv;
+  vAlpha = aShape.w > 0.5 ? aState.x * aShape.w * uStrength * (1.0 + aState.y) : 0.0;
+  gl_Position = projectionMatrix * viewMatrix * vec4(c.x + position.x * size, 0.04, c.y + position.y * size, 1.0);
+}`;
+const SHADOW_FRAG = /* glsl */`
+varying vec2 vUv; varying float vAlpha;
+void main() {
+  float r = length(vUv - 0.5) * 2.0;
+  float a = vAlpha * (1.0 - smoothstep(0.15, 1.0, r));
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(0.0, 0.01, 0.04, a);
+}`;
+
 export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) {
   const N = slotsByLayer.reduce((s, a) => s + a.length / 5, 0);
   // estático por slot
@@ -144,6 +167,12 @@ export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) 
   mesh.frustumCulled = false;
   mesh.renderOrder = 10;
   mesh.name = 'clouds';
+
+  const shadowUniforms = { uTime: uniforms.uTime, uT0: uniforms.uT0, uPuff: uniforms.uPuff, uStrength: { value: 0.16 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } };
+  const shadow = new THREE.Mesh(geom, new THREE.ShaderMaterial({
+    uniforms: shadowUniforms, vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+  }));
+  shadow.frustumCulled = false; shadow.renderOrder = 2; shadow.name = 'cloud-shadows';
 
   const order = new Uint32Array(N); for (let i = 0; i < N; i++) order[i] = i;
   const depth = new Float32Array(N);
@@ -220,13 +249,14 @@ export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) 
   }
 
   return {
-    mesh, count: N, update, sort, frame,
+    mesh, shadow, count: N, update, sort, frame,
     visibleCount: () => visible,
     setFlashes(list) { for (let i = 0; i < MAX_FLASH; i++) { const f = list[i]; if (f) flashes[i].set(f.x, f.z, f.radius, f.intensity); else flashes[i].w = 0; } },
     setSky(sky) {
       uniforms.uLit.value.fromArray(sky.cloudLit); uniforms.uShade.value.fromArray(sky.cloudShade);
+      shadowUniforms.uSunDir.value.fromArray(sky.sunDir); shadowUniforms.uStrength.value = 0.17 - 0.07 * sky.night;
       uniforms.uDarkLit.value.fromArray(sky.cloudLit).multiplyScalar(0.38); uniforms.uDarkShade.value.fromArray(sky.cloudShade).multiplyScalar(0.26);
     },
-    setQuality(q) { slotFrac = q.slots; uniforms.uPuff.value = q.puff; },
+    setQuality(q) { slotFrac = q.slots; uniforms.uPuff.value = q.puff; shadow.visible = q.shadows !== false; },
   };
 }

@@ -59,9 +59,9 @@ export function createMap(geo) {
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(260, 48).rotateX(-Math.PI / 2),
     new THREE.ShaderMaterial({
-      uniforms: { uInner: { value: new THREE.Color(0x1b2c47) }, uOuter: { value: new THREE.Color(0x070b12) } },
+      uniforms: { uInner: { value: new THREE.Vector3(0.13, 0.22, 0.36) }, uOuter: { value: new THREE.Vector3(0.04, 0.07, 0.12) } },
       vertexShader: 'varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'uniform vec3 uInner; uniform vec3 uOuter; varying vec2 vP; void main(){ float k = smoothstep(20.0, 150.0, length(vP)); gl_FragColor = vec4(mix(uInner, uOuter, k), 1.0); }',
+      fragmentShader: 'uniform vec3 uInner; uniform vec3 uOuter; varying vec2 vP; void main(){ float k = smoothstep(25.0, 120.0, length(vP)); gl_FragColor = vec4(mix(uInner, uOuter, k), 1.0); }',
     }),
   );
   ground.position.y = -THICK - 0.05;

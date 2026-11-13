@@ -23,7 +23,7 @@ export function viewPosition({ az, polar, dist }, target = TARGET) {
   );
 }
 
-export function createScene(canvas, { cam = 'se' } = {}) {
+export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
   let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
   renderer.setPixelRatio(pixelRatio);
@@ -44,9 +44,10 @@ export function createScene(canvas, { cam = 'se' } = {}) {
     // inclinação entre ~15° e ~80° acima do horizonte; `top` (só roteiros) desliga o limite
     controls.minPolarAngle = name === 'top' ? 0 : 10 * DEG;
     controls.maxPolarAngle = 75 * DEG;
-    controls.target.copy(TARGET);
-    camera.position.copy(viewPosition(v));
-    camera.lookAt(TARGET);
+    const target = look ? new THREE.Vector3(look.x, 0, look.z) : TARGET;      // dist/look: só para os roteiros
+    controls.target.copy(target);
+    camera.position.copy(viewPosition(dist ? { ...v, dist } : v, target));
+    camera.lookAt(target);
     controls.update();
   }
   setView(cam);
