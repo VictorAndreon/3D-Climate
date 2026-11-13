@@ -3,6 +3,7 @@ import { createScene } from './render/scene.js';
 import { createMap } from './render/map.js';
 import { createClouds } from './render/clouds.js';
 import { createSolidClouds } from './render/clouds-solid.js';
+import { createVolumeClouds } from './render/clouds-volume.js';
 import { createRain, MAX_PER_COLUMN } from './render/rain.js';
 import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
@@ -26,7 +27,9 @@ const params = new URLSearchParams(location.search);
 const DEBUG = params.get('debug') === '1';
 // tetos do nível alto: 6.000 puffs; 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
 const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350 };
-const SOLID = params.get('nuvens') !== 'sprite';        // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
+const NUVENS = params.get('nuvens');
+const SOLID = NUVENS !== 'sprite';                      // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
+const VOLUME = NUVENS === 'volume';                     // protótipo: nuvens volumétricas (raymarching)
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -40,6 +43,7 @@ function sceneBounds(grid) {
 /** Junta nuvens sólidas (baixa, média) e sprites (alta) numa interface só. */
 function combineClouds(solid, high) {
   const both = [solid, high];
+  solid.setCirrus?.(high.mesh);
   return {
     objects: [solid.shadow, solid.mesh, high.shadow, high.mesh],
     update: (f, t, now) => both.forEach((c) => c.update(f, t, now)),
@@ -102,8 +106,9 @@ async function run(geo, grid, view) {
   const bounds = sceneBounds(grid);
   const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
   const slotsFor = (counts) => counts.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept }));
-  const clouds = SOLID ? combineClouds(
-    createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }),
+  const lowMid = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds }) : SOLID ? createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }) : null;
+  const clouds = lowMid ? combineClouds(
+    lowMid,
     // cirros continuam finos e translúcidos (sprite), só na camada alta
     createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), makeSlots({ ...bounds, count: SLOT_COUNTS.clouds[2], seed: 103, accept })] }),
   ) : createClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.clouds) });
