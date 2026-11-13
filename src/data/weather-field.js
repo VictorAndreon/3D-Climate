@@ -5,6 +5,7 @@ import { clamp, smoothstep } from '../util/rng.js';
 
 export const WET_MM = 0.1;          // célula "molhada" se P[h] ≥ 0,1 mm
 const FADE = 1 / 6;                 // 10 min de tempo simulado
+const FADE_OUT_DEPTH = 0.7;         // no fim da hora a intensidade cai para 30%, nunca para 0
 
 export function createWeatherField(grid, series) {
   const { nT, times, low, mid, high, code, precip, windSpeed, windDir } = series;
@@ -44,7 +45,8 @@ export function createWeatherField(grid, series) {
     const cur = precip[p * nT + h];
     const from = wet(p, h - 1) ? precip[p * nT + h - 1] : 0;
     let v = from + (cur - from) * smoothstep(0, FADE, f);
-    if (h < nT - 1 && !wet(p, h + 1)) v *= 1 - smoothstep(1 - FADE, 1, f);
+    // fade-out só de intensidade, com piso: em t = h (hora cheia, a que as setas mostram) a célula ainda chove
+    if (h < nT - 1 && !wet(p, h + 1)) v *= 1 - FADE_OUT_DEPTH * smoothstep(1 - FADE, 1, f);
     return v;
   }
 

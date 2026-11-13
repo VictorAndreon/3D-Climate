@@ -15,7 +15,7 @@ import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
 import { createTooltip } from './ui/tooltip.js';
 import { createLegend } from './ui/legend.js';
-import { loadWeather } from './data/source.js';
+import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
 import { normalizeResponse, buildSeries } from './data/normalize.js';
@@ -134,11 +134,12 @@ async function run(geo, grid, view) {
     }
   });
   if (DEBUG) window.__rs = { field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
-  // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo)
-  document.addEventListener('visibilitychange', () => {
-    const live = ['live', 'cache', 'stale'].includes(data.status.kind);
-    if (!document.hidden && live && Date.now() / 1000 - data.status.fetchedAt > 3600) location.reload();
-  });
+  // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo);
+  // e também a cada 5 min com a aba visível (mapa aberto num segundo monitor não fica com dado velho e selo de atual)
+  const loadedAt = Date.now() / 1000;
+  const maybeReload = () => { if (!document.hidden && shouldReload(data.status, Date.now() / 1000, loadedAt)) location.reload(); };
+  document.addEventListener('visibilitychange', maybeReload);
+  setInterval(maybeReload, 5 * 60 * 1000);
   if (!params.has('cam')) view.flyIn('se');
   view.start();
 }

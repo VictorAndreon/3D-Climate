@@ -125,3 +125,9 @@ test('rainShareByHour: fração dos pontos molhados em cada hora', () => {
   const s = w.rainShareByHour();
   assert.equal(s.length, NT); near(s[6], 16 / 64, 1e-6); assert.equal(s[9], 0); assert.equal(s[5], 0);
 });
+test('Final#1: na hora cheia de uma célula molhada a chuva não some (hora seguinte seca)', () => {
+  const w = createWeatherField(grid, seriesWith(grid, (p, h) => (h === 6 ? 5 : 0)));
+  assert(w.rain(C[0], C[1], 6.0) > 0, `rain(6,0)=${w.rain(C[0], C[1], 6.0)}`);
+  assert(w.rain(C[0], C[1], 5.9999) > 0);
+  assert.equal(w.rain(C[0], C[1], 6.0001), 0);                 // e a hora seguinte, seca, continua 0 (A1)
+});

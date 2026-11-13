@@ -6,6 +6,16 @@ import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 
 export const MAX_PER_COLUMN = 10;
 const TOP = 4.0;                 // altura da base das nuvens baixas
+export const RAIN_TOP = TOP;
+const TILT_K = 0.012;            // inclinação por km/h de vento
+const MAX_DRIFT = 0.25 * Math.min(CELL_X, CELL_Z);   // no topo, o traço se afasta da base no máximo 1/4 de célula
+/** Inclinação do traço (por unidade de altura), na direção para onde o vento sopra, limitada. */
+export function rainTilt(u, v) {
+  let tx = u * TILT_K, tz = -v * TILT_K;
+  const d = Math.hypot(tx, tz) * TOP;
+  if (d > MAX_DRIFT) { tx *= MAX_DRIFT / d; tz *= MAX_DRIFT / d; }
+  return { tx, tz };
+}
 const SPREAD = 0.85;             // raio dos traços em torno da coluna
 // faixas: [limite inferior mm/h, traços por coluna, comprimento, opacidade]
 const BANDS = [[10, 10, 1.2, 0.9], [2.5, 6, 0.8, 0.7], [0.1, 3, 0.5, 0.5]];
@@ -108,17 +118,19 @@ export function createRain({ slots, quality = { slots: 1 } }) {
       active[i] = 1;
       const band = rainBand(mm);
       field.sample(clon[i], clat[i], t, smp);
-      const tx = smp.u * 0.012, tz = -smp.v * 0.012;                     // só os traços se inclinam
+      const { tx, tz } = rainTilt(smp.u, smp.v);                         // só os traços se inclinam
       B[k * 4] = cx[i]; B[k * 4 + 1] = cz[i]; B[k * 4 + 2] = 1; B[k * 4 + 3] = cseed[i];
       P[k * 4] = 0.35 + 0.3 * cseed[i]; P[k * 4 + 1] = band[3]; P[k * 4 + 2] = 0; P[k * 4 + 3] = 0;
       k++;
       for (let j = 0; j < band[1]; j++) {
         const s = i * M + j;
-        if (!(field.rain(olon[s], olat[s], t) > 0)) continue;             // A1 por traço
+        if (!(field.rain(olon[s], olat[s], t) > 0)) continue;             // A1 por traço: na base…
+        const top = toLonLat(ox[s] - tx * TOP, oz[s] - tz * TOP);          // …e no topo, de onde ele cai inclinado
+        if (!(field.rain(top.lon, top.lat, t) > 0)) continue;
         B[k * 4] = ox[s]; B[k * 4 + 1] = oz[s]; B[k * 4 + 2] = 0; B[k * 4 + 3] = (cseed[i] * 31 + j * 0.6180339) % 1;
         P[k * 4] = band[2]; P[k * 4 + 1] = band[3]; P[k * 4 + 2] = tx; P[k * 4 + 3] = tz;
         k++;
-        if (collect) strokes.push({ lon: olon[s], lat: olat[s] });
+        if (collect) strokes.push({ lon: olon[s], lat: olat[s] }, { lon: top.lon, lat: top.lat });
       }
     }
     drops = k;

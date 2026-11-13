@@ -14,7 +14,9 @@ const { serve, launch, open } = require('./lib.cjs');
       await page.waitForTimeout(500);
       await page.screenshot({ path: `shots/gate4-${mode}-${t}.png` });
       const r = await page.evaluate(() => {
-        const t = __rs.clock.t, wet = (o) => { const c = __rs.field.cellInfo(o.lon, o.lat, t); return !!c && c.precip >= 0.1; };
+        const t = __rs.clock.t, g = __rs.grid;
+        // A1 (§6): o ponto pertence à célula do nó de grade mais próximo; vale o dado BRUTO desse nó
+        const wet = (o) => { const p = g.nearest(o.lon, o.lat); return __rs.field.cellInfo(g.lons[p], g.lats[p], t).precip >= 0.1; };
         const cols = __rs.rainColumns().filter((c) => c.active), strokes = __rs.rainStrokes();
         return { t, cols: cols.length, strokes: strokes.length, badCols: cols.filter((c) => !wet(c)).length, badStrokes: strokes.filter((s) => !wet(s)).length, drops: __rs.stats().drops };
       });

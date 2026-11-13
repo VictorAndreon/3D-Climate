@@ -45,8 +45,8 @@ node tools/gate-ui.cjs
 node tools/gate-final.cjs
 ```
 
-- `npm test`: 151 testes dos módulos puros (`node --test`), incluindo a propriedade A1 com 20.000 amostras.
-- `gate-rain`: visto de cima, em 5 horários, todo traço de chuva desenhado cai em célula cujo dado bruto é molhado.
+- `npm test`: 163 testes dos módulos puros (`node --test`), incluindo a propriedade A1 com 20.000 amostras.
+- `gate-rain`: visto de cima, em 5 horários, a base e o topo de todo traço de chuva desenhado ficam em célula cujo dado bruto é molhado.
 - `gate-ui`: play, scrub, velocidade, teclado, tooltip, selo, celular.
 - `gate-final`: caminho ao vivo + cache com a API interceptada (11 requisições na primeira carga, zero na segunda, primeiro quadro, fallbacks, nenhum host externo além da API).
 
@@ -104,22 +104,24 @@ Desvios e escolhas feitas onde o design deixava margem.
 
 **Dados**
 - Hora ativa de chuva e trovoada: `h = ceil(t)`; `precipitation[h]` vale para o intervalo `(h-1, h]`, em degrau.
-- Entre duas horas molhadas a intensidade faz crossfade nos 10 primeiros minutos; some nos 10 últimos se a hora seguinte é seca.
+- Entre duas horas molhadas a intensidade faz crossfade nos 10 primeiros minutos. Se a hora seguinte é seca, nos 10 últimos ela cai para 30%, nunca para zero: na hora cheia (onde as setas param) a célula molhada ainda chove.
 - Vento interpolado em componentes u/v, nunca em ângulo.
 - Canto ausente na bilinear: pesos renormalizados; nenhum canto: nó mais próximo.
 - Cache de outra grade ou cuja série já terminou é descartado antes do teste de validade de 1 h.
 - No modo fixture o "agora" da cena é o início da gravação, e o selo diz `FIXTURE — gravado em DD/MM HH:MM`.
-- Ao voltar para a aba com dado ao vivo de mais de 1 h, a página recarrega.
+- A busca desiste de um lote em 10 s e aborta os demais; o IndexedDB desiste em 1,5 s. Rede pendurada cai no cache vencido ou no demo, não em "carregando" eterno.
+- Com dado ao vivo de mais de 1 h a página recarrega, ao voltar para a aba e também a cada 5 min com a aba visível. Com dado desatualizado, tenta de novo no máximo a cada 15 min.
 
 **Render**
 - Um único desenho instanciado (`InstancedBufferGeometry` + shader próprio) para as três camadas de nuvem, ordenado de trás para frente; reordena quando a câmera gira mais de 5° ou anda mais de 2 unidades.
 - Presença do puff: `smoothstep(u, u + 0,1, c')`, com a faixa **acima** do limiar (centrada nele, apareceria puff abaixo de 15% de cobertura).
 - Puffs ~25% maiores que o plano e sombra das nuvens sobre o mapa (um draw call a mais, desligada no nível baixo).
-- A1 é checado por **traço**, não só por coluna: cada traço só é desenhado se `rain() > 0` na posição dele.
+- A1 é checado por **traço**, não só por coluna: cada traço só é desenhado se `rain() > 0` na base e no topo dele. A inclinação pelo vento é limitada a 1/4 de célula.
 - 1.350 colunas de chuva com até 10 traços + 1 respingo no chão por coluna ativa = 14.850 instâncias (teto de 15.000). O respingo é o que deixa a chuva visível de cima.
 - Raios: agenda por nó de grade com trovoada, 3–9 s de tempo real, só anda com o play. Como a página abre pausada, raio só aparece depois do play.
 - Luz: sol por senoide da hora local (UTC-3 fixo); de noite a "lua" espelha o sol para a cena não ficar chapada.
 - Qualidade: alto / médio (65% dos slots, puff 1,25×, pixel ratio 1,25) / baixo (40%, 1,6×, 1,0, sem sombra).
+- Os limiares de qualidade do design (20 ms / 12 ms) são lidos em relação à taxa da tela: a 60 Hz o intervalo entre quadros nunca fica abaixo de 16,7 ms, então "sobe" quer dizer 10 s rodando na taxa da tela. Com o navegador limitado a 30 Hz, só desce se perder quadros. Depois de cair de um nível, voltar a ele fica bloqueado por 60 s (mais a cada nova queda), para não oscilar.
 - Draw calls medidos: 7 (8 com os pontos de debug), teto de 12.
 
 **Interface**

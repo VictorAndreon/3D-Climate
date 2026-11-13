@@ -63,3 +63,10 @@ test('lote de 1 ponto (resposta-objeto) funciona', async () => {
   const s = await fetchForecast(g51, { fetchImpl: fakeFetch().impl });
   assert.equal(s.nP, 51); assert.equal(s.precip[50 * 2], 50);
 });
+test('Final#3: lote que nunca responde vira falha pelo timeout, e os outros são abortados', async () => {
+  let aborted = 0;
+  const hang = (url, opts) => new Promise((_, rej) => opts?.signal?.addEventListener('abort', () => { aborted++; rej(new Error('abortado')); }));
+  const t0 = Date.now();
+  await assert.rejects(fetchForecast(grid, { fetchImpl: hang, timeoutMs: 60 }));
+  assert(Date.now() - t0 < 2000); assert(aborted >= 1);
+});

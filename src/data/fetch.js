@@ -14,19 +14,28 @@ export function buildUrls(grid, batch = 50) {
 }
 
 /** Rejeita em qualquer falha (rede, HTTP != 2xx, error:true, lote incompleto, séries tortas). */
-export async function fetchForecast(grid, { fetchImpl = fetch, parallel = 4, batch = 50 } = {}) {
+export async function fetchForecast(grid, { fetchImpl = fetch, parallel = 4, batch = 50, timeoutMs = 10000 } = {}) {
   const urls = buildUrls(grid, batch), parts = new Array(urls.length);
+  const all = new AbortController();               // um lote falhou: aborta os outros (não gasta cota à toa)
   let next = 0;
   async function worker() {
     while (next < urls.length) {
       const i = next++, expected = Math.min(batch, grid.nP - i * batch);
-      const res = await fetchImpl(urls[i]);
-      if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);
-      const locs = normalizeResponse(await res.json());
+      const ctl = new AbortController();
+      const onAll = () => ctl.abort();
+      all.signal.addEventListener('abort', onAll);
+      const timer = setTimeout(() => ctl.abort(), timeoutMs);   // rede pendurada vira falha, não espera eterna
+      let locs;
+      try {
+        const res = await fetchImpl(urls[i], { signal: ctl.signal });
+        if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);
+        locs = normalizeResponse(await res.json());
+      } finally { clearTimeout(timer); all.signal.removeEventListener('abort', onAll); }
       if (locs.length !== expected) throw new Error(`Open-Meteo: lote ${i} com ${locs.length} locais, esperado ${expected}`);
       parts[i] = locs;
     }
   }
-  await Promise.all(Array.from({ length: Math.min(parallel, urls.length) }, worker));
+  try { await Promise.all(Array.from({ length: Math.min(parallel, urls.length) }, worker)); }
+  catch (e) { all.abort(); throw e; }
   return buildSeries(grid, parts.flat());
 }

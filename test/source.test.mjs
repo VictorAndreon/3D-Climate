@@ -63,3 +63,26 @@ test('mode fixture: nowUnix devolvido === times[0], kind fixture', async () => {
   const d = deps(), r = await run('fixture', d);
   assert.equal(r.status.kind, 'fixture'); assert.equal(r.nowUnix, 1700000000); assert.equal(r.status.fetchedAt, 1700000000); assert.deepEqual(d.calls, ['fixture']);
 });
+test('Final#3: loadCache que nunca resolve não trava a carga', async () => {
+  const d = deps(); d.loadCache = () => new Promise(() => {});
+  const r = await loadWeather({ mode: 'live', grid, gridVersion: 'gv', nowUnix: NOW, deps: d, cacheTimeoutMs: 30 });
+  assert.equal(r.status.kind, 'live');
+});
+test('Final#3: saveCache que nunca resolve não trava a carga', async () => {
+  const d = deps(); d.saveCache = () => new Promise(() => {});
+  const r = await loadWeather({ mode: 'live', grid, gridVersion: 'gv', nowUnix: NOW, deps: d, cacheTimeoutMs: 30 });
+  assert.equal(r.status.kind, 'live');
+});
+import { shouldReload } from '../src/data/source.js';
+test('Final#4: dado ao vivo com mais de 1 h pede recarga; demo e fixture nunca', () => {
+  const at = 1000000;
+  assert.equal(shouldReload({ kind: 'live', fetchedAt: at }, at + 3599, at), false);
+  assert.equal(shouldReload({ kind: 'live', fetchedAt: at }, at + 3601, at), true);
+  assert.equal(shouldReload({ kind: 'cache', fetchedAt: at }, at + 3601, at), true);
+  for (const kind of ['demo', 'demo-fallback', 'fixture']) assert.equal(shouldReload({ kind, fetchedAt: at }, at + 99999, at), false);
+});
+test('Final#4: desatualizado tenta de novo no máximo a cada 15 min (não a cada troca de aba)', () => {
+  const at = 1000000, loaded = at + 7200;
+  assert.equal(shouldReload({ kind: 'stale', fetchedAt: at }, loaded + 60, loaded), false);
+  assert.equal(shouldReload({ kind: 'stale', fetchedAt: at }, loaded + 901, loaded), true);
+});
