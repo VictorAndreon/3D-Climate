@@ -32,3 +32,9 @@ test('seriesToApiJson: um objeto por ponto, no formato da API', () => {
   assert.equal(j[0].hourly.time.length, 168); assert.equal(j[0].hourly.time[0], START);
   near(j[7].latitude, grid.lats[7], 1e-6); near(j[7].longitude, grid.lons[7], 1e-6);
 });
+import { buildSeries } from '../src/data/normalize.js';
+test('ida e volta: buildSeries(seriesToApiJson(s)) reproduz s', () => {
+  const b = buildSeries(grid, JSON.parse(JSON.stringify(seriesToApiJson(grid, s))));
+  assert.deepEqual(b.low, s.low); assert.deepEqual(b.mid, s.mid); assert.deepEqual(b.high, s.high); assert.deepEqual(b.code, s.code); assert.deepEqual(b.times, s.times);
+  for (let i = 0; i < s.precip.length; i += 17) near(b.precip[i], s.precip[i], 0.0501);
+});
