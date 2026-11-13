@@ -23,7 +23,7 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 | `/?fixture=1` | carrega `assets/fixture.json` pelo mesmo parsing da API |
 | `/?debug=1` | painel (fps, tempo de quadro, puffs, gotas, draw calls, qualidade) e pontos da grade coloridos pelo dado bruto: cinza = seco, azul = chuva, amarelo = trovoada |
 
-Teclado: espaço = play/pause, ← → = ±1 h, Home = agora, Esc = fecha o município.
+Teclado: espaço = play/pause, ← → = ±1 h, Home = agora, Esc = fecha o município, WASD = anda com a câmera (Shift corre).
 
 Clique (ou toque) num município: ele sobe do mapa com contorno dourado e abre um painel com área, código IBGE, o tempo no instante da linha do tempo e um meteograma da faixa visível (nuvem pendurada no topo, chuva caindo dela, trovoada em amarelo). Clicar no meteograma move a linha do tempo. Clique fora do estado ou Esc fecha.
 

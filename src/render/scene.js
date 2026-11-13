@@ -70,6 +70,44 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   window.addEventListener('resize', resize);
   resize();
 
+  // WASD (e Shift para correr): anda com câmera e alvo juntos, no plano do chão, relativo para onde se olha
+  const keys = new Set();
+  const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+  window.addEventListener('keydown', (e) => {
+    if (!MOVE_KEYS.has(e.code) || e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = e.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
+    if (!keys.size) controls.dispatchEvent({ type: 'start' });          // cancela o voo de abertura
+    keys.add(e.code);
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', (e) => keys.delete(e.code));
+  window.addEventListener('blur', () => keys.clear());                  // soltou a tecla fora da janela
+  const fwd = new THREE.Vector3(), side = new THREE.Vector3(), move = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+  let shift = false;
+  window.addEventListener('keydown', (e) => { shift = e.shiftKey; });
+  window.addEventListener('keyup', (e) => { shift = e.shiftKey; });
+  function walk(dt) {
+    if (!keys.size || !(dt > 0)) return;
+    fwd.subVectors(controls.target, camera.position).setY(0);
+    if (fwd.lengthSq() < 1e-8) fwd.set(0, 0, -1).applyQuaternion(camera.quaternion).setY(0);   // olhando reto para baixo
+    fwd.normalize();
+    side.crossVectors(fwd, UP);
+    move.set(0, 0, 0);
+    if (keys.has('KeyW')) move.add(fwd);
+    if (keys.has('KeyS')) move.sub(fwd);
+    if (keys.has('KeyD')) move.add(side);
+    if (keys.has('KeyA')) move.sub(side);
+    if (move.lengthSq() === 0) return;
+    // velocidade proporcional à distância: perto anda devagar, de longe cruza o estado em ~2 s
+    const speed = Math.max(4, camera.position.distanceTo(controls.target)) * (shift ? 1.6 : 0.6);
+    move.normalize().multiplyScalar(speed * dt);
+    const t = controls.target, x0 = t.x, z0 = t.z;
+    t.x = Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, t.x + move.x));
+    t.z = Math.min(BOUNDS.maxZ, Math.max(BOUNDS.minZ, t.z + move.z));
+    camera.position.x += t.x - x0; camera.position.z += t.z - z0;     // no limite do estado a câmera para junto
+  }
+
   const frameFns = [];
   let raf = 0, last = 0, calls = 0, running = false;
   function loop(ms) {
@@ -77,6 +115,7 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     const now = ms / 1000;
     const dt = last ? Math.min(now - last, 1) : 0;
     last = now;
+    walk(dt);
     controls.update();
     for (const fn of frameFns) fn(now, dt);
     renderer.render(scene, camera);
