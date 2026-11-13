@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { createScene } from './render/scene.js';
 import { createMap } from './render/map.js';
+import { createReliefMap } from './render/relief-map.js';
+import { loadRelief } from './data/relief.js';
 import { createClouds } from './render/clouds.js';
 import { createSolidClouds } from './render/clouds-solid.js';
 import { createVolumeClouds } from './render/clouds-volume.js';
@@ -33,6 +35,7 @@ const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350
 const NUVENS = params.get('nuvens');
 const SOLID = NUVENS !== 'sprite';                      // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
 const VOLUME = NUVENS === 'volume';                     // protótipo: nuvens volumétricas (raymarching)
+const RELEVO = params.get('relevo') === '1';            // spike: mapa com relevo; &exagero=N muda o exagero vertical (padrão 12)
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -81,7 +84,12 @@ function createView(canvas) {
 }
 
 async function run(geo, grid, view) {
-  const map = createMap(geo);
+  let map;
+  if (RELEVO) {
+    try { map = createReliefMap(geo, await loadRelief('./assets/relief.bin.gz'), { exag: Number(params.get('exagero')) || 12 }); }
+    catch (e) { console.warn('relevo indisponível, seguindo com o mapa plano', e); }
+  }
+  map ??= createMap(geo);
   view.scene.add(map);
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
   view.scene.add(lights.hemi, lights.sun);
@@ -103,9 +111,13 @@ async function run(geo, grid, view) {
   // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
   new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
-  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
+  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: map.userData.heightLL });
   view.scene.add(lift.group);
-  const pickLand = (x, y) => view.pick(lift.mesh ? [lift.mesh, map.userData.land] : map.userData.land, x, y);
+  const { inside } = map.userData;                         // relevo: a malha cobre o retângulo, a máscara diz o que é estado
+  const pickLand = (x, y) => {
+    const hit = view.pick(lift.mesh ? [lift.mesh, map.userData.land] : map.userData.land, x, y);
+    return hit && (!inside || inside(hit.x, hit.z)) ? hit : null;
+  };
   // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
   const tooltip = createTooltip(document.getElementById('tooltip'), {
     canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false,

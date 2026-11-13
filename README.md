@@ -31,6 +31,8 @@ As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde h�
 
 Dá pra descer a câmera até quase rente ao chão e chegar bem perto: de lado se vê nuvem em cima, chuva no meio e solo embaixo; perto da câmera a nuvem vira neblina, então dá pra atravessá-la.
 
+**Spike do relevo:** `?relevo=1` troca o topo plano por terreno de verdade (altitude da AWS Terrain Tiles, exagerada 12× para aparecer na escala da maquete). `&exagero=20` deixa a serra mais dramática. Combina com os outros parâmetros (`?relevo=1&fixture=1`).
+
 Parâmetros só para os roteiros de verificação: `t=<horas após agora>`, `cam=top|se|sw|ne|nw`, `dist=`, `look=lon,lat`.
 
 ## Testes e portões
@@ -77,7 +79,7 @@ npm run fixture
 ```
 
 `vendor` copia o Three.js do `node_modules` para `vendor/three/`. `geo` baixa a malha municipal e gera
-`assets/rs.json` e `assets/municipios.json`. `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
+`assets/rs.json` e `assets/municipios.json`. `node tools/build-relief.mjs` baixa a altitude e gera `assets/relief.bin.gz` (spike do relevo). `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
 
 ## O que só você confirma no seu navegador
 
@@ -140,6 +142,8 @@ Desvios e escolhas feitas onde o design deixava margem.
 - Nuvens sólidas: chuva sempre cinza (a partir de 45% de escurecimento, mais escura com a intensidade), trovoada em chumbo com o topo da bigorna claro; borda das bolhas e nuvem a menos de ~12–55 km da câmera se desfazem por alpha to coverage (MSAA), sem sair do passe opaco.
 - Tooltip faz raycast na peça do estado, não no plano: fora do RS ele some, mesmo havendo dado na borda da grade.
 - No celular a legenda vira uma fileira de ícones acima do rodapé.
+- Relevo (spike, `?relevo=1`): AWS Terrain Tiles (Terrarium, z8, ~550 m/px) reduzidos por média para 512×500 (~1,6 km/px) em `assets/relief.bin.gz` (260 KB, gzip, descomprimido no navegador com `DecompressionStream`). Mar e Lagoa dos Patos viram nível do mar. Malha de ~300×290 vértices recortada no contorno por máscara (alphaTest), paredes laterais seguindo a altitude da borda (a divisa com SC no cânion do Rio Pelotas vira um paredão), bordas municipais coladas no terreno, cor por altitude. Exagero 12×: a serra fica em ~1,7 unidade, abaixo das nuvens baixas (~4).
+- O que o spike **não** adapta ainda: chuva, respingos e raio continuam terminando em y = 0 (somem dentro dos morros), a sombra das nuvens continua num plano (some na serra), e o município levantado vira uma mesa plana acima do ponto mais alto dele em vez de acompanhar o terreno.
 - Município selecionado: polígonos por município em `assets/municipios.json` (373 KB, mesma simplificação das bordas), fora do `rs.json` para não pesar no primeiro quadro; é baixado com o navegador ocioso ou no primeiro clique. Área calculada da malha original (aprox., ±1% do IBGE).
 - O painel mostra a previsão do nó da grade mais próximo do centroide; município grande (Alegrete) cobre várias células e o tooltip em outra ponta pode discordar.
 - No toque o painel do município substitui o tooltip (tem os mesmos dados); no desktop o hover continua abrindo o tooltip. O contorno dourado tem uma cópia sem teste de profundidade para aparecer através das nuvens.

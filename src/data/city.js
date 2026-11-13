@@ -26,7 +26,8 @@ export function createMunicipioIndex(items) {
   };
 }
 
-function inRing(r, x, y) {
+/** Ponto (x, y) dentro de um anel plano [x0, y0, x1, y1, ...] (par-ímpar). */
+export function inRing(r, x, y) {
   let c = false;
   for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
     const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];

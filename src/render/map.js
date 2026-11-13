@@ -55,7 +55,15 @@ export function createMap(geo) {
   borders.name = 'borders';
   group.add(borders);
 
-  // chão: disco com gradiente radial que morre na cor de fundo
+  const ground = createGround();
+  group.add(ground);
+
+  group.userData = { land, borders, ground };
+  return group;
+}
+
+/** Chão: disco com gradiente radial que morre na cor de fundo, logo abaixo da peça do estado. */
+export function createGround() {
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(260, 48).rotateX(-Math.PI / 2),
     new THREE.ShaderMaterial({
@@ -66,8 +74,5 @@ export function createMap(geo) {
   );
   ground.position.y = -THICK - 0.05;
   ground.name = 'ground';
-  group.add(ground);
-
-  group.userData = { land, borders, ground };
-  return group;
+  return ground;
 }
