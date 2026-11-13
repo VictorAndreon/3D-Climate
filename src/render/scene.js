@@ -85,6 +85,23 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) 
   function stop() { running = false; cancelAnimationFrame(raf); }
   document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));   // aba oculta: laço para
 
+  // voo de abertura: de uma vista alta e afastada até a vista padrão; qualquer interação cancela
+  function flyIn(name = 'se', seconds = 1.8) {
+    const to = VIEWS[name] ?? VIEWS.se, from = { az: to.az - 0.5, polar: 14 * DEG, dist: 150 };
+    let t = 0, active = true;
+    const cancel = () => { active = false; controls.removeEventListener('start', cancel); };
+    controls.addEventListener('start', cancel);
+    const pose = (k) => camera.position.copy(viewPosition({ az: from.az + (to.az - from.az) * k, polar: from.polar + (to.polar - from.polar) * k, dist: from.dist + (to.dist - from.dist) * k }, controls.target));
+    const savedMax = controls.maxDistance;
+    controls.maxDistance = 200; pose(0); camera.lookAt(controls.target);
+    frameFns.push((now, dt) => {
+      if (!active) { controls.maxDistance = savedMax; return; }
+      t = Math.min(1, t + dt / seconds);
+      pose(1 - (1 - t) ** 3);                                  // ease-out
+      if (t >= 1) cancel();
+    });
+  }
+
   // ponteiro -> ponto sobre um objeto da cena (usado pelo tooltip com a peça do estado)
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
   function pick(object, clientX, clientY) {
@@ -96,7 +113,7 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null } = {}) 
   }
 
   return {
-    scene, camera, controls, renderer, setView, start, stop, pick,
+    scene, camera, controls, renderer, setView, start, stop, pick, flyIn,
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,

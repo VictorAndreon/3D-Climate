@@ -50,3 +50,4 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradi
   .lg-item span { display: none; }                          /* no celular a legenda vira só ícones */
   #badge { right: 50%; transform: translateX(50%); white-space: nowrap; }
 }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--dim); pointer-events: none; }

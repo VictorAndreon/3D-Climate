@@ -10,6 +10,7 @@ import { makeGrid } from './data/grid.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
 import { createDebug, createGridDots } from './ui/debug.js';
+import { createQuality, LEVELS } from './render/quality.js';
 import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
 import { createTooltip } from './ui/tooltip.js';
@@ -34,13 +35,29 @@ function sceneBounds(grid) {
   return { minX: minX - CELL_X, maxX: maxX + CELL_X, minZ: minZ - CELL_Z, maxZ: maxZ + CELL_Z };
 }
 
+function fatal(msg) {
+  document.getElementById('scene').hidden = true;
+  for (const id of ['timeline', 'legend', 'tooltip', 'loading']) document.getElementById(id).hidden = true;
+  const el = document.getElementById('fatal'); el.textContent = msg; el.hidden = false;
+}
+const NO_WEBGL = 'Seu navegador não conseguiu iniciar o WebGL. Recarregue a página.';
+
 async function boot() {
   const geo = await (await fetch('./assets/rs.json')).json();
   const grid = makeGrid(geo.grid);
+  const canvas = document.getElementById('scene');
+  let view;
+  try { view = createView(canvas); } catch { fatal(NO_WEBGL); return; }
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); view.stop(); fatal(NO_WEBGL); });
+  await run(geo, grid, view);
+}
+
+function createView(canvas) {
   const look = params.get('look')?.split(',').map(Number);
-  const view = createScene(document.getElementById('scene'), {
-    cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), look: look ? toScene(look[0], look[1]) : null,
-  });
+  return createScene(canvas, { cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), look: look ? toScene(look[0], look[1]) : null });
+}
+
+async function run(geo, grid, view) {
   const map = createMap(geo);
   view.scene.add(map);
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
@@ -73,8 +90,13 @@ async function boot() {
   const lightning = createLightning({ grid });
   view.scene.add(clouds.shadow, rain.mesh, lightning.object3d, clouds.mesh);
 
+  // qualidade adaptativa: desce com quadro lento, sobe só depois de 10 s folgados
+  const quality = createQuality({});
+  function applyQuality(level) { const q = LEVELS[level]; clouds.setQuality(q); rain.setQuality(q); view.setPixelRatio(q.pixelRatio); }
+  applyQuality(quality.level);
+
   const perf = { fps: 60, frameMs: 16.7 };
-  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: 'alto' });
+  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
   const debug = DEBUG ? createDebug(document.getElementById('debug'), { stats }) : null;
   const dots = DEBUG ? createGridDots(grid) : null;
   if (dots) view.scene.add(dots.points);
@@ -90,7 +112,11 @@ async function boot() {
 
   let acc = 1, first = true;
   view.onFrame((now, dt) => {
-    if (dt > 0) { perf.frameMs += (dt * 1000 - perf.frameMs) * 0.1; perf.fps = 1000 / perf.frameMs; }
+    if (dt > 0) {
+      perf.frameMs += (dt * 1000 - perf.frameMs) * 0.1; perf.fps = 1000 / perf.frameMs;
+      const lvl = quality.push(dt * 1000, now * 1000);
+      if (lvl != null) { applyQuality(lvl); acc = 1; }
+    }
     clock.tick(dt);
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
@@ -98,9 +124,22 @@ async function boot() {
     clouds.frame(now, view.camera);
     rain.frame(now);
     debug?.tick(dt);
-    if (first) { first = false; requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; }); }
+    if (first) {                                             // primeiro quadro útil: mapa + nuvens já desenhados
+      first = false;
+      performance.mark('first-frame');
+      const ms = performance.now();
+      if (window.__rs) window.__rs.firstFrameMs = ms;
+      document.getElementById('loading').hidden = true;
+      requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; });
+    }
   });
   if (DEBUG) window.__rs = { field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo)
+  document.addEventListener('visibilitychange', () => {
+    const live = ['live', 'cache', 'stale'].includes(data.status.kind);
+    if (!document.hidden && live && Date.now() / 1000 - data.status.fetchedAt > 3600) location.reload();
+  });
+  if (!params.has('cam')) view.flyIn('se');
   view.start();
 }
-boot();
+boot().catch((e) => { console.error(e); fatal('Não foi possível carregar o mapa. Recarregue a página.'); });
