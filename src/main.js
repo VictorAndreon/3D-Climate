@@ -9,7 +9,11 @@ import { makeSlots } from './render/slots.js';
 import { makeGrid } from './data/grid.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
-import { createDebug } from './ui/debug.js';
+import { createDebug, createGridDots } from './ui/debug.js';
+import { loadWeather } from './data/source.js';
+import { fetchForecast } from './data/fetch.js';
+import { loadCache, saveCache } from './data/cache.js';
+import { normalizeResponse, buildSeries } from './data/normalize.js';
 import { toScene, toLonLat, CELL_X, CELL_Z } from './geo/projection.js';
 
 const params = new URLSearchParams(location.search);
@@ -38,8 +42,18 @@ async function boot() {
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
   view.scene.add(lights.hemi, lights.sun);
 
-  const field = createWeatherField(grid, syntheticSeries(grid, Math.floor(Date.now() / 3600000) * 3600));
-  const state = { t: Number(params.get('t') ?? 0), playing: true };
+  const mode = params.get('demo') === '1' ? 'demo' : params.get('fixture') === '1' ? 'fixture' : 'live';
+  const data = await loadWeather({
+    mode, grid, gridVersion: geo.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
+    deps: {
+      fetchForecast, loadCache, saveCache, syntheticSeries,
+      loadFixture: async () => buildSeries(grid, normalizeResponse(await (await fetch('./assets/fixture.json')).json())),
+    },
+  });
+  const field = createWeatherField(grid, data.series);
+  // "agora" achado pelo timestamp, nunca assumido como índice 0
+  const tNow = Math.min(Math.max((data.nowUnix - field.times[0]) / 3600, 0), field.nT - 1);
+  const state = { t: Math.min(tNow + Number(params.get('t') ?? 0), field.nT - 1), playing: true };
 
   // slots só onde há dado: dentro da célula de algum nó da grade
   const bounds = sceneBounds(grid);
@@ -52,6 +66,8 @@ async function boot() {
   const perf = { fps: 60, frameMs: 16.7 };
   const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: 'alto' });
   const debug = DEBUG ? createDebug(document.getElementById('debug'), { stats }) : null;
+  const dots = DEBUG ? createGridDots(grid) : null;
+  if (dots) view.scene.add(dots.points);
 
   function refresh(now) {
     const sky = skyState(localHour(field.times[0] + state.t * 3600));
@@ -59,6 +75,7 @@ async function boot() {
     clouds.update(field, state.t, now);
     rain.update(field, state.t);
     lightning.update(field, state.t);
+    dots?.update(field, state.t);
   }
 
   let acc = 1, first = true;
@@ -72,7 +89,7 @@ async function boot() {
     debug?.tick(dt);
     if (first) { first = false; requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; }); }
   });
-  if (DEBUG) window.__rs = { field, grid, stats, state, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, state.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (DEBUG) window.__rs = { field, grid, stats, state, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, state.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
   view.start();
 }
 boot();
