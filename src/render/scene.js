@@ -103,13 +103,13 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     });
   }
 
-  // ponteiro -> ponto sobre um objeto da cena (usado pelo tooltip com a peça do estado)
+  // ponteiro -> ponto sobre um objeto (ou lista) da cena: peça do estado e município levantado
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
   function pick(object, clientX, clientY) {
     const r = canvas.getBoundingClientRect();
     ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    const hit = raycaster.intersectObject(object, false)[0];
+    const hit = (Array.isArray(object) ? raycaster.intersectObjects(object, false) : raycaster.intersectObject(object, false))[0];
     return hit ? { x: hit.point.x, z: hit.point.z } : null;
   }
 

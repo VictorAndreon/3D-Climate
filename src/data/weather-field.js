@@ -103,5 +103,11 @@ export function createWeatherField(grid, series) {
     return out;
   }
 
-  return { nT, times, sample, rain, storm, cellInfo, activeHour, anyRainByHour, rainShareByHour };
+  /** Séries brutas de um nó da grade (views, sem cópia). */
+  function point(p) {
+    const at = (a) => a.subarray(p * nT, (p + 1) * nT);
+    return { precip: at(precip), code: at(code), low: at(low), mid: at(mid), high: at(high), windSpeed: at(windSpeed), windDir: at(windDir) };
+  }
+
+  return { nT, times, sample, rain, storm, cellInfo, activeHour, anyRainByHour, rainShareByHour, point };
 }

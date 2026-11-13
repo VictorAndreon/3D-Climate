@@ -23,7 +23,9 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 | `/?fixture=1` | carrega `assets/fixture.json` pelo mesmo parsing da API |
 | `/?debug=1` | painel (fps, tempo de quadro, puffs, gotas, draw calls, qualidade) e pontos da grade coloridos pelo dado bruto: cinza = seco, azul = chuva, amarelo = trovoada |
 
-Teclado: espaço = play/pause, ← → = ±1 h, Home = agora.
+Teclado: espaço = play/pause, ← → = ±1 h, Home = agora, Esc = fecha o município.
+
+Clique (ou toque) num município: ele sobe do mapa com contorno dourado e abre um painel com área, código IBGE, o tempo no instante da linha do tempo e um meteograma da faixa visível (nuvem pendurada no topo, chuva caindo dela, trovoada em amarelo). Clicar no meteograma move a linha do tempo. Clique fora do estado ou Esc fecha.
 
 As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde há trovoada; os cirros são sprites translúcidos. `?nuvens=sprite` volta ao visual antigo, todo em sprite.
 
@@ -75,7 +77,7 @@ npm run fixture
 ```
 
 `vendor` copia o Three.js do `node_modules` para `vendor/three/`. `geo` baixa a malha municipal e gera
-`assets/rs.json`. `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
+`assets/rs.json` e `assets/municipios.json`. `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
 
 ## O que só você confirma no seu navegador
 
@@ -137,3 +139,6 @@ Desvios e escolhas feitas onde o design deixava margem.
 - Nuvens sólidas: chuva sempre cinza (a partir de 45% de escurecimento, mais escura com a intensidade), trovoada em chumbo com o topo da bigorna claro; borda das bolhas e nuvem a menos de ~12–55 km da câmera se desfazem por alpha to coverage (MSAA), sem sair do passe opaco.
 - Tooltip faz raycast na peça do estado, não no plano: fora do RS ele some, mesmo havendo dado na borda da grade.
 - No celular a legenda vira uma fileira de ícones acima do rodapé.
+- Município selecionado: polígonos por município em `assets/municipios.json` (373 KB, mesma simplificação das bordas), fora do `rs.json` para não pesar no primeiro quadro; é baixado com o navegador ocioso ou no primeiro clique. Área calculada da malha original (aprox., ±1% do IBGE).
+- O painel mostra a previsão do nó da grade mais próximo do centroide; município grande (Alegrete) cobre várias células e o tooltip em outra ponta pode discordar.
+- No toque o painel do município substitui o tooltip (tem os mesmos dados); no desktop o hover continua abrindo o tooltip. O contorno dourado tem uma cópia sem teste de profundidade para aparecer através das nuvens.

@@ -17,6 +17,9 @@ import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
 import { createTooltip } from './ui/tooltip.js';
 import { createLegend } from './ui/legend.js';
+import { createCityLift } from './render/city-lift.js';
+import { createCityPanel } from './ui/city-panel.js';
+import { createCitySelect } from './ui/city-select.js';
 import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -97,9 +100,21 @@ async function run(geo, grid, view) {
   const clock = createClock({ tNow, tEnd72: Math.min(tNow + 72, field.nT - 1), tEndAll: field.nT - 1 });
   if (params.has('t')) { const off = Number(params.get('t')); if (off > 72) clock.setRange('7d'); clock.seek(tNow + off); }   // só roteiros: abre pausado nesse instante
   createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.rainShareByHour() });
+  // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
+  new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
-  createTooltip(document.getElementById('tooltip'), {
-    canvas: view.renderer.domElement, pick: (x, y) => view.pick(map.userData.land, x, y), field, clock, municipios: geo.municipios,
+  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
+  view.scene.add(lift.group);
+  const pickLand = (x, y) => view.pick(lift.mesh ? [lift.mesh, map.userData.land] : map.userData.land, x, y);
+  // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
+  const tooltip = createTooltip(document.getElementById('tooltip'), {
+    canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false,
+  });
+  let citySelect = null;
+  const panel = createCityPanel(document.getElementById('city'), { clock, field, onClose: () => citySelect.close() });
+  citySelect = createCitySelect({
+    canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios,
+    onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); },
   });
 
   // slots só onde há dado: dentro da célula de algum nó da grade
@@ -147,6 +162,7 @@ async function run(geo, grid, view) {
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
     clouds.setFlashes(lightning.frame(now, dt, clock.playing));
+    lift.frame(dt);
     clouds.frame(now, view.camera);
     rain.frame(now);
     debug?.tick(dt);
@@ -159,7 +175,7 @@ async function run(geo, grid, view) {
       requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; });
     }
   });
-  if (DEBUG) window.__rs = { field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (DEBUG) window.__rs = { citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
   // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo);
   // e também a cada 5 min com a aba visível (mapa aberto num segundo monitor não fica com dado velho e selo de atual)
   const loadedAt = Date.now() / 1000;
