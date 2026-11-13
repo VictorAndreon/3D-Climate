@@ -10,6 +10,8 @@ import { makeGrid } from './data/grid.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
 import { createDebug, createGridDots } from './ui/debug.js';
+import { createClock } from './ui/clock.js';
+import { createTimeline } from './ui/timeline.js';
 import { loadWeather } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -53,7 +55,9 @@ async function boot() {
   const field = createWeatherField(grid, data.series);
   // "agora" achado pelo timestamp, nunca assumido como índice 0
   const tNow = Math.min(Math.max((data.nowUnix - field.times[0]) / 3600, 0), field.nT - 1);
-  const state = { t: Math.min(tNow + Number(params.get('t') ?? 0), field.nT - 1), playing: true };
+  const clock = createClock({ tNow, tEnd72: Math.min(tNow + 72, field.nT - 1), tEndAll: field.nT - 1 });
+  if (params.has('t')) { const off = Number(params.get('t')); if (off > 72) clock.setRange('7d'); clock.seek(tNow + off); }   // só roteiros: abre pausado nesse instante
+  createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.anyRainByHour() });
 
   // slots só onde há dado: dentro da célula de algum nó da grade
   const bounds = sceneBounds(grid);
@@ -70,26 +74,27 @@ async function boot() {
   if (dots) view.scene.add(dots.points);
 
   function refresh(now) {
-    const sky = skyState(localHour(field.times[0] + state.t * 3600));
+    const sky = skyState(localHour(field.times[0] + clock.t * 3600));
     applySky(sky, { renderer: view.renderer, lights, ground: map.userData.ground, clouds, rain });
-    clouds.update(field, state.t, now);
-    rain.update(field, state.t);
-    lightning.update(field, state.t);
-    dots?.update(field, state.t);
+    clouds.update(field, clock.t, now);
+    rain.update(field, clock.t);
+    lightning.update(field, clock.t);
+    dots?.update(field, clock.t);
   }
 
   let acc = 1, first = true;
   view.onFrame((now, dt) => {
     if (dt > 0) { perf.frameMs += (dt * 1000 - perf.frameMs) * 0.1; perf.fps = 1000 / perf.frameMs; }
+    clock.tick(dt);
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
-    clouds.setFlashes(lightning.frame(now, dt, state.playing));
+    clouds.setFlashes(lightning.frame(now, dt, clock.playing));
     clouds.frame(now, view.camera);
     rain.frame(now);
     debug?.tick(dt);
     if (first) { first = false; requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; }); }
   });
-  if (DEBUG) window.__rs = { field, grid, stats, state, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, state.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (DEBUG) window.__rs = { field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
   view.start();
 }
 boot();

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-export const TARGET = new THREE.Vector3(-4.5, 0, 0.2);          // centro do estado na cena
+export const TARGET = new THREE.Vector3(-4.5, 0, 6);                // centro do estado na cena
 const BOUNDS = { minX: -43, maxX: 34, minZ: -37, maxZ: 38 };
 const DEG = Math.PI / 180;
 const DIST = 100;
