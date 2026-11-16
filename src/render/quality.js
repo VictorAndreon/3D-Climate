@@ -13,13 +13,17 @@ export const LEVELS = [
 const WINDOW = 2000, DOWN_MS = 20, UP_MS = 12, UP_HOLD = 10000, IGNORE_MS = 250, GAP_MS = 500, BLOCK_MS = 60000, THROTTLED_MS = 28;
 
 export function createQuality({ level = 0 } = {}) {
-  let samples = [], sum = 0, since = null, goodSince = null, last = null;
+  let samples = [], sum = 0, since = null, goodSince = null, last = null, locked = false;
   const strikes = LEVELS.map(() => 0), blockedUntil = LEVELS.map(() => -Infinity);
   const reset = () => { samples = []; sum = 0; since = null; goodSince = null; };
   const api = {
     get level() { return level; },
+    get locked() { return locked; },
+    /** Trava num nível (menu de debug); null destrava e o automático continua de onde estava, medindo do zero. */
+    lock(lvl) { locked = lvl != null; if (locked) level = lvl; reset(); last = null; },
     /** Registra um quadro. Devolve o novo nível quando troca, senão null. */
     push(frameMs, nowMs) {
+      if (locked) return null;
       if (last != null && nowMs - last > GAP_MS) reset();           // aba voltou: começa do zero
       last = nowMs;
       if (!(frameMs > 0) || frameMs > IGNORE_MS) return null;       // quadro isolado absurdo não conta
