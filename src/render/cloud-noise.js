@@ -67,13 +67,25 @@ function equalize(src, dst, offset, stride) {
   for (let i = 0; i < src.length; i++) dst[i * stride + offset] = Math.round(hist[Math.floor((src[i] - lo) * k)] * 255);
 }
 
-export function makeCloudNoise(N = 64, seed = 7) {
-  const rnd = mulberry32(seed), n = N * N * N;
-  const shape = new Float32Array(n), detail = new Float32Array(n);
-  addWorley(shape, N, 3, 0.5, rnd); addWorley(shape, N, 6, 0.27, rnd); addWorley(shape, N, 12, 0.13, rnd);
-  addValue(shape, N, 4, 0.22, rnd); addValue(shape, N, 8, 0.1, rnd);
-  addWorley(detail, N, 5, 0.5, rnd); addWorley(detail, N, 10, 0.3, rnd); addWorley(detail, N, 20, 0.2, rnd);
-  const data = new Uint8Array(n * 2);
-  equalize(shape, data, 0, 2); equalize(detail, data, 1, 2);
+/** Um canal do ruído ('shape' ou 'detail'), N³ bytes. Canais separados para poderem ser gerados em paralelo. */
+export function makeNoiseChannel(kind, N = 64, seed = 7) {
+  const rnd = mulberry32(seed + (kind === 'shape' ? 0 : 1)), f = new Float32Array(N * N * N);
+  if (kind === 'shape') {
+    addWorley(f, N, 3, 0.5, rnd); addWorley(f, N, 6, 0.27, rnd); addWorley(f, N, 12, 0.13, rnd);
+    addValue(f, N, 4, 0.22, rnd); addValue(f, N, 8, 0.1, rnd);
+  } else { addWorley(f, N, 5, 0.5, rnd); addWorley(f, N, 10, 0.3, rnd); addWorley(f, N, 20, 0.2, rnd); }
+  const out = new Uint8Array(f.length);
+  equalize(f, out, 0, 1);
+  return out;
+}
+
+/** Junta os dois canais em RG intercalado. */
+export function interleave(shape, detail, N) {
+  const data = new Uint8Array(shape.length * 2);
+  for (let i = 0; i < shape.length; i++) { data[i * 2] = shape[i]; data[i * 2 + 1] = detail[i]; }
   return { size: N, data };
+}
+
+export function makeCloudNoise(N = 64, seed = 7) {
+  return interleave(makeNoiseChannel('shape', N, seed), makeNoiseChannel('detail', N, seed), N);
 }

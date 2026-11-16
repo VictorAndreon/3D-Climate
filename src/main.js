@@ -5,7 +5,7 @@ import { createReliefMap } from './render/relief-map.js';
 import { loadRelief } from './data/relief.js';
 import { createClouds } from './render/clouds.js';
 import { createSolidClouds } from './render/clouds-solid.js';
-import { createVolumeClouds } from './render/clouds-volume.js';
+import { createVolumeClouds, startCloudNoise } from './render/clouds-volume.js';
 import { createRain, MAX_PER_COLUMN } from './render/rain.js';
 import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
@@ -36,6 +36,7 @@ const NUVENS = params.get('nuvens');
 const SOLID = NUVENS !== 'sprite';                      // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
 const VOLUME = NUVENS === 'volume';                     // protótipo: nuvens volumétricas (raymarching)
 const RELEVO = params.get('relevo') === '1';            // spike: mapa com relevo; &exagero=N muda o exagero vertical (padrão 12)
+const noiseReady = VOLUME ? startCloudNoise() : null;   // o ruído 3D é gerado num worker enquanto o resto carrega
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -58,6 +59,7 @@ function combineClouds(solid, high) {
     setSky: (s) => both.forEach((c) => c.setSky(s)),
     setQuality: (q) => both.forEach((c) => c.setQuality(q)),
     visibleCount: () => solid.visibleCount() + high.visibleCount(),
+    info: () => solid.info?.() ?? null,
   };
 }
 
@@ -133,7 +135,7 @@ async function run(geo, grid, view) {
   const bounds = sceneBounds(grid);
   const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
   const slotsFor = (counts) => counts.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept }));
-  const lowMid = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds }) : SOLID ? createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }) : null;
+  const lowMid = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds, noise: await noiseReady }) : SOLID ? createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }) : null;
   const clouds = lowMid ? combineClouds(
     lowMid,
     // cirros continuam finos e translúcidos (sprite), só na camada alta
@@ -149,7 +151,7 @@ async function run(geo, grid, view) {
   applyQuality(quality.level);
 
   const perf = { fps: 60, frameMs: 16.7 };
-  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
+  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), cloudInfo: clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
   const debug = DEBUG ? createDebug(document.getElementById('debug'), { stats }) : null;
   const dots = DEBUG ? createGridDots(grid) : null;
   if (dots) view.scene.add(dots.points);
