@@ -1,4 +1,4 @@
-// PROTÓTIPO (?nuvens=volume): nuvens baixas e médias como volume de verdade (raymarching).
+// PROTÓTIPO (?nuvens=volume): todas as camadas de nuvem como volume de verdade (raymarching).
 // - O WeatherField é "assado" numa textura 2D pequena (cobertura baixa, média, escurecimento, torre) a ~10 Hz.
 // - Um ruído 3D dá a forma; a cobertura do dado é o limiar: mais cobertura = mais nuvem. Nada abaixo de 15%.
 // - O volume é marchado em resolução reduzida num alvo próprio e colado por cima da cena.
@@ -12,6 +12,7 @@ const MAX_FLASH = 8, FIELD_N = 64;
 const MIN_COVER = 15, RAIN_MIN_LOW = 60;
 const Y0 = 3.9, Y1 = 13.2;                       // fatia vertical onde pode haver nuvem
 const ANVIL_Y0 = 11.0, ANVIL_Y1 = 12.9;          // bigorna do cumulonimbus
+const CIRRUS_Y0 = 9.7, CIRRUS_Y1 = 10.6;         // cirros
 const VMAX = 0.09, PERIOD = 40;                  // vento: velocidade máxima na cena (unidades/s) e ciclo do arrasto (s)
 const ALPHA = 0.1;                               // peso do quadro novo no acúmulo temporal
 
@@ -24,18 +25,21 @@ uniform vec4 uB;          // minX, minZ, 1/largura, 1/profundidade
 uniform float uPhase;     // 0..1, ciclo do vento local
 uniform vec2 uDrift;      // deslocamento acumulado pelo vento médio
 vec4 fieldAt(vec2 xz) { return textureLod(uField, (xz - uB.xy) * uB.zw, 0.0); }      // r baixa, g média, b bigorna, a torre
-vec3 field2At(vec2 xz) {                                                              // vento x, vento z (cena/s), escuro
-  vec3 g = textureLod(uField2, (xz - uB.xy) * uB.zw, 0.0).rgb;
-  return vec3((g.xy * 2.0 - 1.0) * ${VMAX}, g.z);
+vec4 field2At(vec2 xz) {                                                              // vento x, vento z (cena/s), escuro, alta
+  vec4 g = textureLod(uField2, (xz - uB.xy) * uB.zw, 0.0);
+  return vec4((g.xy * 2.0 - 1.0) * ${VMAX}, g.zw);
 }
 vec2 regionAt(vec2 xz) { return textureLod(uNoise, vec3(xz / 61.0, 0.31), 0.0).rg; }  // cada nuvem com sua base e sua altura
+// borda desfiada em duas escalas. O mip sobe com a distância: de longe o fiapo fino some em vez de virar pontilhado
 float erode(float b, vec3 q, float lod) {
-  float e = textureLod(uNoise, q, lod).g * 0.55 * (1.0 - 0.5 * b);
+  float e = 0.62 * textureLod(uNoise, q, lod).g + 0.38 * textureLod(uNoise, q * 2.7 + 0.37, lod + 1.4).g;
+  e *= 0.55 * (1.0 - 0.5 * b);
   return clamp((b - e) / (1.0 - e), 0.0, 1.0);
 }
-// f, g, v = campo, vento+escuro e variação regional no ponto. hn = altura normalizada dentro da nuvem, para a luz ambiente
-float cloudDensity(vec3 p, vec4 f, vec3 g, vec2 v, bool fine, float lod, out float hn) {
-  hn = 0.5;
+// f, g, v = campo, vento+escuro+alta e variação regional no ponto.
+// hn = altura normalizada dentro da nuvem (luz ambiente); thin = quanto da densidade é cirro (não escurece com a chuva)
+float cloudDensity(vec3 p, vec4 f, vec4 g, vec2 v, bool fine, float lod, out float hn, out float thin) {
+  hn = 0.5; thin = 0.0;
   float d = 0.0;
   vec3 D = vec3(uDrift.x, 0.0, uDrift.y);
   if (f.r > 0.004) {                                                  // camada baixa: cúmulos
@@ -55,7 +59,7 @@ float cloudDensity(vec3 p, vec4 f, vec3 g, vec2 v, bool fine, float lod, out flo
       float need = 1.0 - min(1.0, 1.12 * pow(f.r, 0.75));
       need += (1.0 - need) * max(pow(h, 1.4) * (1.0 - 0.45 * f.a), 1.0 - smoothstep(0.0, 0.14, h));
       float b = clamp((s - need) / 0.13, 0.0, 1.0);
-      if (b > 0.0) { if (fine) b = erode(b, (p - D * 1.6) / 5.5, lod); d += b; hn = h; }
+      if (b > 0.0) { if (fine) b = erode(b, (p - D * 1.6) / 8.0, lod); d += b; hn = h; }
     }
   }
   if (f.g > 0.004) {                                                  // camada média: altocúmulos, finos e miúdos
@@ -67,7 +71,7 @@ float cloudDensity(vec3 p, vec4 f, vec3 g, vec2 v, bool fine, float lod, out flo
       float need = 1.0 - 0.85 * f.g;
       need += (1.0 - need) * pow(abs(h - 0.4) / 0.6, 1.6);
       float b = clamp((s - need) / 0.25, 0.0, 1.0);
-      if (b > 0.0) { if (fine) b = erode(b, (p - D * 2.0) / 4.0, lod); if (b * 0.6 > d) hn = h; d += b * 0.6; }
+      if (b > 0.0) { if (fine) b = erode(b, (p - D * 2.0) / 6.0, lod); if (b * 0.6 > d) hn = h; d += b * 0.6; }
     }
   }
   if (f.b > 0.02) {                                                   // bigorna: lençol largo e achatado no topo da torre
@@ -77,7 +81,24 @@ float cloudDensity(vec3 p, vec4 f, vec3 g, vec2 v, bool fine, float lod, out flo
       float need = 1.0 - min(1.0, 1.3 * f.b);
       need += (1.0 - need) * pow(abs(h - 0.45) / 0.55, 2.0);
       float b = clamp((s - need) / 0.3, 0.0, 1.0);
-      if (b > 0.0) { if (fine) b = erode(b, (p - D * 0.8) / 7.0, lod); if (b * 0.8 > d) hn = 0.85; d += b * 0.8; }
+      if (b > 0.0) { if (fine) b = erode(b, (p - D * 0.8) / 9.0, lod); if (b * 0.8 > d) hn = 0.85; d += b * 0.8; }
+    }
+  }
+  if (g.w > 0.004) {                                                  // camada alta: cirros, véu fino e esticado
+    float h = (p.y - ${CIRRUS_Y0.toFixed(1)}) / ${(CIRRUS_Y1 - CIRRUS_Y0).toFixed(1)};
+    if (h > 0.0 && h < 1.0) {
+      vec3 q = p - D * 2.2;
+      float s = textureLod(uNoise, vec3(q.x * 0.45 + q.z * 0.25, q.y * 3.0, q.z - q.x * 0.3) / 24.0 + 0.61, 0.0).r;
+      float need = 1.0 - 0.9 * g.w;
+      need += (1.0 - need) * pow(abs(2.0 * h - 1.0), 2.0);
+      float b = clamp((s - need) / 0.4, 0.0, 1.0);
+      if (b > 0.0) {
+        // fiapos: ruído bem esticado numa direção
+        if (fine) b *= 0.35 + 0.65 * textureLod(uNoise, vec3(q.x * 0.12 + q.z * 0.07, q.y, q.z - q.x * 0.5) / 5.0, lod + 0.5).g;
+        b *= 0.16;
+        thin = b / (d + b + 1e-4); if (d < 0.02) hn = 1.0;
+        d += b;
+      }
     }
   }
   return d;
@@ -95,8 +116,8 @@ uniform vec3 uCam, uSunDir, uLit, uShade, uFlashColor;
 uniform vec4 uFlash[${MAX_FLASH}];
 uniform vec4 uBox;        // minX, minZ, maxX, maxZ
 uniform float uPix;       // tamanho angular de um pixel do alvo
-uniform float uSub;       // fração do passo sorteada a cada quadro
-uniform int uSteps, uFrame;
+uniform float uSub;       // subfase do passo deste quadro
+uniform int uSteps;
 varying vec2 vNdc;
 void main() {
   vec4 v4 = uProjInv * vec4(vNdc, 1.0, 1.0);
@@ -111,43 +132,54 @@ void main() {
   if (t1 <= t0) { gl_FragColor = vec4(0.0); return; }
   // passo geométrico: fino perto da câmera, largo longe, sempre no máximo uSteps passos
   float k = pow(t1 / t0, 1.0 / float(uSteps)) - 1.0;
-  // início do raio deslocado num padrão 4x4 que muda a cada quadro: a média no espaço e no tempo apaga o degrau do passo
-  const int BAYER[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
-  ivec2 bp = ivec2(gl_FragCoord.xy) & 3;
-  float jit = (float((BAYER[bp.x + bp.y * 4] + uFrame * 7) & 15) + uSub) / 16.0;
+  // início do raio deslocado em 9 fases num padrão 3x3, mais 4 subfases que se revezam a cada quadro:
+  // a média 3x3 no espaço e o acúmulo no tempo somam 36 fases e apagam o degrau do passo
+  ivec2 bp = ivec2(gl_FragCoord.xy) % 3;
+  const int ORDER[9] = int[9](0, 5, 7, 3, 8, 1, 6, 2, 4);
+  float jit = (float(ORDER[bp.x + bp.y * 3]) + uSub) / 9.0;
   float t = t0 * (1.0 + k * jit);
   float T = 1.0; vec3 col = vec3(0.0);
   float mu = dot(rd, uSunDir);
   float fwd = 0.35 * pow(max(mu, 0.0), 6.0) + 0.12 * (0.5 + 0.5 * mu);      // contra o sol a borda acende
   for (int i = 0; i < 96; i++) {
     if (i >= uSteps || T < 0.02) break;
-    float dt = t * k;
-    vec3 p = ro + rd * (t + 0.5 * dt);
+    float dt = t * k, ts = t;
     t += dt;
-    vec4 f = fieldAt(p.xz);
-    if (max(max(f.r, f.g), f.b) < 0.004) continue;
-    vec3 g = field2At(p.xz); vec2 v = regionAt(p.xz);
-    float hn;
-    float d = cloudDensity(p, f, g, v, true, clamp(log2(t * uPix / 0.086), 0.0, 4.0), hn);
-    if (d <= 0.003) continue;
-    // sombra própria: duas amostras na direção do sol
-    float h1, h2;
-    float d1 = cloudDensity(p + uSunDir * 0.5, f, g, v, false, 0.0, h1), d2 = cloudDensity(p + uSunDir * 1.5, f, g, v, false, 0.0, h2);
-    float sun = exp(-(0.3 * d + 1.3 * d1 + 2.2 * d2));
-    float amb = mix(0.42, 1.0, hn);
-    float dk = g.z;
-    vec3 lit = uLit * mix(1.0, 0.36, dk), shade = uShade * mix(1.0, 0.3, dk);
-    vec3 S = mix(shade * amb, lit, sun * (0.82 + fwd)) + lit * fwd * sun * 0.6;
-    float fl = 0.0;
-    for (int j = 0; j < ${MAX_FLASH}; j++) { vec4 q = uFlash[j]; fl += q.w * (1.0 - smoothstep(q.z * 0.3, q.z, distance(p.xz, q.xy))); }
-    S += uFlashColor * min(fl, 1.5);
-    float a = 1.0 - exp(-d * 5.0 * dt);
-    col += T * a * S; T *= 1.0 - a;
+    vec3 pm = ro + rd * (ts + 0.5 * dt);
+    vec4 f = fieldAt(pm.xz);
+    vec4 g = field2At(pm.xz);
+    if (max(max(f.r, f.g), max(f.b, g.w)) < 0.004) continue;      // céu limpo: passo largo e barato
+    vec2 v = regionAt(pm.xz);
+    // onde há nuvem o passo largo é dividido em até 4: sem isso a nuvem fica opaca num passo só
+    // e a superfície aparece em degraus (as faixas em vista rasante)
+    int nsub = int(clamp(ceil(dt / 0.3), 1.0, 4.0));
+    float sdt = dt / float(nsub);
+    float lod = clamp(log2(ts * uPix / 0.125) + 1.5, 0.0, 5.0);
+    for (int j = 0; j < 4; j++) {
+      if (j >= nsub || T < 0.02) break;
+      vec3 p = ro + rd * (ts + (float(j) + 0.5) * sdt);
+      float hn, thin, th1;
+      float d = cloudDensity(p, f, g, v, true, lod, hn, thin);
+      if (d <= 0.003) continue;
+      // sombra própria: duas amostras na direção do sol
+      float h1, h2;
+      float d1 = cloudDensity(p + uSunDir * 0.5, f, g, v, false, 0.0, h1, th1), d2 = cloudDensity(p + uSunDir * 1.5, f, g, v, false, 0.0, h2, th1);
+      float sun = exp(-(0.3 * d + 1.3 * d1 + 2.2 * d2));
+      float amb = mix(0.42, 1.0, hn);
+      float dk = g.z * (1.0 - thin);
+      vec3 lit = uLit * mix(1.0, 0.36, dk), shade = uShade * mix(1.0, 0.3, dk);
+      vec3 S = mix(shade * amb, lit, sun * (0.82 + fwd)) + lit * fwd * sun * 0.6;
+      float fl = 0.0;
+      for (int q = 0; q < ${MAX_FLASH}; q++) { vec4 fq = uFlash[q]; fl += fq.w * (1.0 - smoothstep(fq.z * 0.3, fq.z, distance(p.xz, fq.xy))); }
+      S += uFlashColor * min(fl, 1.5);
+      float a = 1.0 - exp(-d * 5.0 * sdt);
+      col += T * a * S; T *= 1.0 - a;
+    }
   }
   gl_FragColor = vec4(min(col, vec3(1.0)), 1.0 - T);     // cor já multiplicada pela cobertura
 }`;
 
-// Acúmulo no tempo: média 4x4 do quadro atual (anula o padrão do passo deslocado) misturada com o histórico.
+// Acúmulo no tempo: média 3x3 do quadro atual (anula o padrão do passo deslocado) misturada com o histórico.
 // O histórico é buscado onde aquele ponto estava no quadro anterior e limitado à faixa de valores (média ± desvio) da vizinhança atual,
 // então câmera em movimento ou nuvem mudando não deixam rastro.
 const RESOLVE_FRAG = /* glsl */`
@@ -157,13 +189,14 @@ uniform mat4 uProjInv, uCamWorld, uPrevVP; uniform vec3 uCam; uniform float uAlp
 varying vec2 vNdc;
 void main() {
   vec2 uv = vNdc * 0.5 + 0.5;
+  // média da vizinhança 3x3: anula exatamente o padrão 3x3 do passo deslocado
   vec4 box = vec4(0.0), sq = vec4(0.0);
-  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
-    vec4 c = texture2D(uCur, uv + uTexel * (vec2(float(i), float(j)) - 1.5));
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec4 c = texture2D(uCur, uv + uTexel * vec2(float(i), float(j)));
     box += c; sq += c * c;
   }
-  box /= 16.0;
-  vec4 dev = 1.25 * sqrt(max(sq / 16.0 - box * box, 0.0)) + 0.004;   // faixa = média ± desvio da vizinhança (varia suave, não deixa blocos)
+  box /= 9.0;
+  vec4 dev = 1.25 * sqrt(max(sq / 9.0 - box * box, 0.0)) + 0.004;    // faixa = média ± desvio da vizinhança (varia suave, não deixa blocos)
   // ponto de referência no meio da camada de nuvens, reprojetado na câmera do quadro anterior
   vec4 v4 = uProjInv * vec4(vNdc, 1.0, 1.0);
   vec3 rd = normalize(mat3(uCamWorld) * (v4.xyz / v4.w));
@@ -191,11 +224,11 @@ uniform vec3 uSunDir; uniform float uStrength;
 varying vec2 vXZ;
 void main() {
   vec2 off = uSunDir.xz / max(uSunDir.y, 0.35) * 0.6;
-  float hn, a = 0.0;
-  vec2 q = vXZ + off * 5.0; vec4 f = fieldAt(q); vec3 g = field2At(q); vec2 v = regionAt(q);
-  a += cloudDensity(vec3(q.x, 4.9, q.y), f, g, v, false, 0.0, hn) * (1.0 + g.z);
+  float hn, th, a = 0.0;
+  vec2 q = vXZ + off * 5.0; vec4 f = fieldAt(q); vec4 g = field2At(q); vec2 v = regionAt(q);
+  a += cloudDensity(vec3(q.x, 4.9, q.y), f, g, v, false, 0.0, hn, th) * (1.0 + g.z);
   q = vXZ + off * 8.0; f = fieldAt(q); g = field2At(q); v = regionAt(q);
-  a += 0.6 * cloudDensity(vec3(q.x, 8.1, q.y), f, g, v, false, 0.0, hn);
+  a += 0.6 * cloudDensity(vec3(q.x, 8.1, q.y), f, g, v, false, 0.0, hn, th);
   a = uStrength * min(a, 1.6);
   if (a < 0.004) discard;
   gl_FragColor = vec4(0.0, 0.01, 0.04, a);
@@ -260,7 +293,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
     ...shared, ...camUniforms,
     uLit: { value: new THREE.Vector3(1, 1, 1) }, uShade: { value: new THREE.Vector3(0.62, 0.69, 0.82) },
     uFlashColor: { value: new THREE.Vector3(0.9, 0.93, 1.0) }, uFlash: { value: flashes },
-    uBox: { value: new THREE.Vector4(minX, minZ, maxX, maxZ) }, uPix: { value: 0.002 }, uSteps: { value: 64 }, uFrame: { value: 0 }, uSub: { value: 0.5 },
+    uBox: { value: new THREE.Vector4(minX, minZ, maxX, maxZ) }, uPix: { value: 0.002 }, uSteps: { value: 64 }, uSub: { value: 0.5 },
   };
 
   // três alvos em resolução reduzida: o quadro marchado e dois de acúmulo que se revezam.
@@ -294,14 +327,14 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
   const shadow = new THREE.Mesh(sg, new THREE.ShaderMaterial({ uniforms: shadowUniforms, vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
   shadow.frustumCulled = false; shadow.renderOrder = 2; shadow.name = 'cloud-shadows';
 
-  let lastT = null, scale = 0.5, cirrus = null, lastNow = 0, frameNo = 0, write = 0, fresh = true, meanX = 0, meanZ = 0;
+  let lastT = null, scale = 0.75, lastNow = 0, frameNo = 0, write = 0, fresh = true, meanX = 0, meanZ = 0;
   const smp = {}, size = new THREE.Vector2(), ref = new THREE.Vector3();
   function update(field, t) {
     if (t === lastT) return;                                   // relógio parado: o campo não mudou
     lastT = t;
     let sx = 0, sz = 0, n = 0;
     for (let q = 0; q < N * N; q++) {
-      let lowC = 0, midC = 0, dark = 0, tw = 0, wx = 0, wz = 0;
+      let lowC = 0, midC = 0, highC = 0, dark = 0, tw = 0, wx = 0, wz = 0;
       if (inside[q]) {
         field.sample(flon[q], flat[q], t, smp);
         const r = field.rain(flon[q], flat[q], t), storm = field.storm(flon[q], flat[q], t);
@@ -309,6 +342,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
         if (r > 0 && c < RAIN_MIN_LOW) c = RAIN_MIN_LOW;       // não chove de céu limpo
         lowC = clamp((c - MIN_COVER) / (100 - MIN_COVER), 0, 1);
         midC = clamp((smp.mid - MIN_COVER) / (100 - MIN_COVER), 0, 1);
+        highC = clamp((smp.high - MIN_COVER) / (100 - MIN_COVER), 0, 1);
         dark = storm ? 1 : r > 0 ? 0.45 + 0.55 * clamp(r / 8, 0, 1) : 0;   // escuro avaliado onde a nuvem está
         tw = storm ? 1 : 0;
         // vento do dado: para onde sopra (leste = +x, norte = -z), velocidade cheia a partir de 40 km/h
@@ -316,7 +350,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
         sx += wx; sz += wz; n++;
       }
       fdata[q * 4] = lowC * 255; fdata[q * 4 + 1] = midC * 255; tower[q] = tw;
-      gdata[q * 4] = 127.5 + 127.5 * wx; gdata[q * 4 + 1] = 127.5 + 127.5 * wz; gdata[q * 4 + 2] = dark * 255;
+      gdata[q * 4] = 127.5 + 127.5 * wx; gdata[q * 4 + 1] = 127.5 + 127.5 * wz; gdata[q * 4 + 2] = dark * 255; gdata[q * 4 + 3] = highC * 255;
     }
     meanX = n ? (sx / n) * VMAX : 0; meanZ = n ? (sz / n) * VMAX : 0;
     blur(2);                                                   // torre com borda suave (senão vira um paredão quadrado)
@@ -343,13 +377,10 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
     camUniforms.uCam.value.setFromMatrixPosition(camera.matrixWorld);
     uniforms.uPix.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / h;
     frameNo = (frameNo + 1) % 4096;
-    uniforms.uFrame.value = frameNo; uniforms.uSub.value = (frameNo * 0.61803399) % 1;
-    // ordem de desenho sem buffer de profundidade: a chuva vive abaixo da base e os cirros acima do topo,
-    // então basta saber de que lado a câmera está
-    const y = camUniforms.uCam.value.y;
-    if (y < 4) { mesh.renderOrder = 4; if (cirrus) cirrus.renderOrder = 3; }          // por baixo: cirros, volume, chuva
-    else if (y < 10) { mesh.renderOrder = 11; if (cirrus) cirrus.renderOrder = 10; }  // no meio: chuva, cirros, volume
-    else { mesh.renderOrder = 9; if (cirrus) cirrus.renderOrder = 10; }               // por cima: chuva, volume, cirros
+    uniforms.uSub.value = [0, 0.5, 0.25, 0.75][frameNo & 3];
+    // ordem de desenho sem buffer de profundidade: a chuva e os raios vivem abaixo da base das nuvens,
+    // então basta saber se a câmera está abaixo dela (volume antes da chuva) ou acima (volume depois)
+    mesh.renderOrder = camUniforms.uCam.value.y < 4 ? 4 : 9;
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(target);
     renderer.render(marchScene, passCam);
@@ -371,8 +402,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
   }
 
   return {
-    mesh, shadow, update, frame,
-    setCirrus(m) { cirrus = m; },
+    mesh, shadow, update, frame, objects: [shadow, mesh],
     visibleCount: () => 0,
     info: () => `volume ${target.width}×${target.height} · ${uniforms.uSteps.value} passos`,
     setFlashes(list) { for (let i = 0; i < MAX_FLASH; i++) { const f = list[i]; if (f) flashes[i].set(f.x, f.z, f.radius, f.intensity); else flashes[i].w = 0; } },
@@ -381,7 +411,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
       uniforms.uLit.value.fromArray(sky.cloudLit); uniforms.uShade.value.fromArray(sky.cloudShade);
       shadowUniforms.uStrength.value = 0.3 - 0.12 * sky.night;
     },
-    // alto: metade da resolução e 64 passos; baixo: um terço e 32 passos
-    setQuality(q) { const k = clamp((q.slots - 0.4) / 0.6, 0, 1); scale = 0.33 + 0.17 * k; uniforms.uSteps.value = Math.round(32 + 32 * k); shadow.visible = q.shadows !== false; },
+    // alto: 75% da resolução e 64 passos; baixo: metade e 40 passos
+    setQuality(q) { const k = clamp((q.slots - 0.4) / 0.6, 0, 1); scale = 0.5 + 0.25 * k; uniforms.uSteps.value = Math.round(40 + 24 * k); shadow.visible = q.shadows !== false; },
   };
 }
