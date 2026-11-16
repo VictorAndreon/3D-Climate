@@ -1,5 +1,5 @@
 // Clique (ou toque) no mapa seleciona o município: a peça dele sobe e o painel abre.
-// Clique fora do estado ou Esc fecha. A malha por município só é baixada quando precisa.
+// A busca por nome (selectByName) faz o mesmo. Clique fora do estado ou Esc fecha. A malha por município só é baixada quando precisa.
 import { toLonLat } from '../geo/projection.js';
 import { createMunicipioIndex } from '../data/city.js';
 
@@ -24,11 +24,23 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, onSele
     const idx = index ?? await load();
     const m = idx.find(lon, lat);
     if (!m) { close(); return; }
+    show(m, [lon, lat]);
+  }
+
+  function show(m, fallbackLL) {
     if (current === m) return;
     current = m;
     lift.select(m.polys);
-    panel.show(m, centers.get(m.name) ?? [lon, lat]);
+    panel.show(m, centers.get(m.name) ?? fallbackLL);
     onSelect(m);
+  }
+
+  /** Seleciona pelo nome (busca), como se o município tivesse sido clicado. Devolve [lon, lat] do centro, ou null. */
+  async function selectByName(name) {
+    const m = (index ?? await load()).byName(name), ll = centers.get(name);
+    if (!m || !ll) return null;
+    show(m, ll);
+    return ll;
   }
 
   let down = null;
@@ -44,5 +56,5 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, onSele
   // adianta o download quando o navegador estiver ocioso, para o primeiro clique ser imediato
   (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500)))(() => load().catch(() => { loading = null; }));
 
-  return { close, selectAt, get current() { return current; } };
+  return { close, selectAt, selectByName, get current() { return current; } };
 }

@@ -142,6 +142,25 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     });
   }
 
+  // leva o alvo da câmera até (x, z) mantendo o ângulo; se estiver longe, aproxima até maxDist. Qualquer interação cancela
+  function focusOn(x, z, { maxDist = 45, seconds = 0.9 } = {}) {
+    controls.dispatchEvent({ type: 'start' });                 // cancela voo de abertura ou foco anterior
+    const from = controls.target.clone();
+    const to = new THREE.Vector3(Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x)), 0, Math.min(BOUNDS.maxZ, Math.max(BOUNDS.minZ, z)));
+    const off = camera.position.clone().sub(from), d0 = off.length(), d1 = Math.min(d0, maxDist);
+    let t = 0;
+    const step = (now, dt) => {
+      t = seconds > 0 ? Math.min(1, t + dt / seconds) : 1;
+      const k = 1 - (1 - t) ** 3;                              // ease-out
+      controls.target.lerpVectors(from, to, k);
+      camera.position.copy(controls.target).addScaledVector(off, (d0 + (d1 - d0) * k) / d0);
+      if (t >= 1) cancel();
+    };
+    const cancel = () => { controls.removeEventListener('start', cancel); const i = frameFns.indexOf(step); if (i >= 0) frameFns.splice(i, 1); };
+    controls.addEventListener('start', cancel);
+    frameFns.push(step);
+  }
+
   // ponteiro -> ponto sobre um objeto (ou lista) da cena: peça do estado e município levantado
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
   function pick(object, clientX, clientY) {
@@ -153,7 +172,7 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   }
 
   return {
-    scene, camera, controls, renderer, setView, start, stop, pick, flyIn,
+    scene, camera, controls, renderer, setView, start, stop, pick, flyIn, focusOn,
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,

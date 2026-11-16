@@ -25,6 +25,8 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 
 Teclado: espaço = play/pause, ← → = ±1 h, Home = agora, Esc = fecha o município, WASD = anda com a câmera (Shift corre).
 
+Busca no canto superior esquerdo (ou tecla `/`): digite o nome do município, escolha na lista (setas + Enter, ou clique) e a câmera vai até ele com a peça levantada e o painel aberto, como num clique. Ignora acento e maiúsculas.
+
 Clique (ou toque) num município: ele sobe do mapa com contorno dourado e abre um painel com área, código IBGE, o tempo no instante da linha do tempo e um meteograma da faixa visível (nuvem pendurada no topo, chuva caindo dela, trovoada em amarelo). Clicar no meteograma move a linha do tempo. Clique fora do estado ou Esc fecha.
 
 As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde há trovoada; os cirros são sprites translúcidos. `?nuvens=sprite` volta ao visual antigo, todo em sprite.

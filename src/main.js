@@ -22,6 +22,7 @@ import { createLegend } from './ui/legend.js';
 import { createCityLift } from './render/city-lift.js';
 import { createCityPanel } from './ui/city-panel.js';
 import { createCitySelect } from './ui/city-select.js';
+import { createCitySearch } from './ui/city-search.js';
 import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -126,7 +127,16 @@ async function run(geo, grid, view) {
   const panel = createCityPanel(document.getElementById('city'), { clock, field, onClose: () => citySelect.close() });
   citySelect = createCitySelect({
     canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios,
-    onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); },
+    onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); search.setValue(m?.name ?? ''); },
+  });
+  // busca por nome: seleciona como um clique e leva a câmera até o município
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const search = createCitySearch(document.getElementById('search'), {
+    names: geo.municipios.map(([name]) => name),
+    onPick: async (name) => {
+      const ll = await citySelect.selectByName(name).catch((err) => { console.warn('município indisponível', err); return null; });
+      if (ll) { const s = toScene(ll[0], ll[1]); view.focusOn(s.x, s.z, { seconds: reducedMotion ? 0 : 0.9 }); }
+    },
   });
 
   // slots só onde há dado: dentro da célula de algum nó da grade
