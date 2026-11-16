@@ -37,10 +37,10 @@ float erode(float b, vec3 q, float lod) {
   return clamp((b - e) / (1.0 - e), 0.0, 1.0);
 }
 // f, g, v = campo, vento+escuro+alta e variação regional no ponto.
-// hn = altura normalizada dentro da nuvem (luz ambiente); thin = quanto da densidade é cirro (não escurece com a chuva)
+// hn = altura normalizada dentro da nuvem (luz ambiente); thin = quanto da densidade é cirro ou topo de bigorna (não escurece com a chuva)
 float cloudDensity(vec3 p, vec4 f, vec4 g, vec2 v, bool fine, float lod, out float hn, out float thin) {
   hn = 0.5; thin = 0.0;
-  float d = 0.0;
+  float d = 0.0, nd = 0.0;                                            // nd = parte da densidade que não escurece
   vec3 D = vec3(uDrift.x, 0.0, uDrift.y);
   if (f.r > 0.004) {                                                  // camada baixa: cúmulos
     float base = 4.0 + 0.9 * v.y * (1.0 - smoothstep(0.0, 0.4, g.z)); // onde chove a base desce até o topo da chuva
@@ -78,29 +78,40 @@ float cloudDensity(vec3 p, vec4 f, vec4 g, vec2 v, bool fine, float lod, out flo
     float h = (p.y - ${ANVIL_Y0.toFixed(1)}) / ${(ANVIL_Y1 - ANVIL_Y0).toFixed(1)};
     if (h > 0.0 && h < 1.0) {
       float s = textureLod(uNoise, (p * vec3(1.0, 2.5, 1.0) - D * 0.5 + 31.7) / 22.0, 0.0).r;
-      float need = 1.0 - min(1.0, 1.3 * f.b);
+      float need = 1.0 - min(0.8, 1.1 * f.b);                         // nunca fecha de todo: o ruído sempre recorta a borda
       need += (1.0 - need) * pow(abs(h - 0.45) / 0.55, 2.0);
       float b = clamp((s - need) / 0.3, 0.0, 1.0);
-      if (b > 0.0) { if (fine) b = erode(b, (p - D * 0.8) / 9.0, lod); if (b * 0.8 > d) hn = 0.85; d += b * 0.8; }
+      if (b > 0.0) { if (fine) b = erode(b, (p - D * 0.8) / 9.0, lod); if (b * 0.8 > d) hn = 0.85; d += b * 0.8; nd += b * 0.56; }   // o topo da bigorna pega sol
     }
   }
-  if (g.w > 0.004) {                                                  // camada alta: cirros, véu fino e esticado
+  if (g.w > 0.004) {                                                  // camada alta: cirros, véu fino e desfiado
     float h = (p.y - ${CIRRUS_Y0.toFixed(1)}) / ${(CIRRUS_Y1 - CIRRUS_Y0).toFixed(1)};
     if (h > 0.0 && h < 1.0) {
+      // o plano é entortado de leve por dois ruídos lentos: os fiapos fazem curva suave e nenhum trecho repete o vizinho
+      // (entortar forte em escala curta vira redemoinho, não cirro)
       vec3 q = p - D * 2.2;
-      float s = textureLod(uNoise, vec3(q.x * 0.45 + q.z * 0.25, q.y * 3.0, q.z - q.x * 0.3) / 24.0 + 0.61, 0.0).r;
+      vec2 w2 = textureLod(uNoise, vec3(q.xz / 29.0, 0.77), 0.0).rg - 0.5;
+      q.xz += (v - 0.5) * 11.0 + w2 * 2.5;
+      float s = textureLod(uNoise, vec3(q.x, q.y * 3.0, q.z) / 21.0 + 0.61, 0.0).r;    // manchas: onde há véu
       float need = 1.0 - 0.9 * g.w;
       need += (1.0 - need) * pow(abs(2.0 * h - 1.0), 2.0);
       float b = clamp((s - need) / 0.4, 0.0, 1.0);
       if (b > 0.0) {
-        // fiapos: ruído bem esticado numa direção
-        if (fine) b *= 0.35 + 0.65 * textureLod(uNoise, vec3(q.x * 0.12 + q.z * 0.07, q.y, q.z - q.x * 0.5) / 5.0, lod + 0.5).g;
-        b *= 0.16;
-        thin = b / (d + b + 1e-4); if (d < 0.02) hn = 1.0;
-        d += b;
+        if (fine) {
+          // duas famílias de fiapos, em direções diferentes, que se revezam de região para região
+          vec2 da = vec2(0.87, 0.5), db = vec2(-0.26, 0.97);
+          float fa = textureLod(uNoise, vec3(dot(q.xz, da) * 0.1, q.y, dot(q.xz, vec2(-da.y, da.x))) / 9.0, lod + 0.5).g;
+          float fb = textureLod(uNoise, vec3(dot(q.xz, db) * 0.1, q.y + 3.3, dot(q.xz, vec2(-db.y, db.x))) / 7.0, lod + 0.5).g;
+          float fib = mix(fa, fb, smoothstep(-0.14, 0.14, w2.x));
+          b *= (0.2 + 0.8 * smoothstep(0.2, 0.85, fib)) * (0.55 + 0.9 * v.y);   // tufos mais densos aqui, mais ralos ali
+        }
+        b *= 0.18;
+        if (d < 0.02) hn = 1.0;
+        d += b; nd += b;
       }
     }
   }
+  thin = nd / (d + 1e-4);
   return d;
 }`;
 
