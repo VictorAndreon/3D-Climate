@@ -7,10 +7,10 @@ const tNow = 0.68;
 const mk = () => createClock({ tNow, tEnd72: tNow + 72, tEndAll: 167 });
 
 test('começa em tNow, pausado, 1×, faixa 72 h', () => { const c = mk(); assert.equal(c.t, tNow); assert.equal(c.playing, false); assert.equal(c.speed, 1); assert.equal(c.range, '72h'); assert.equal(c.tMin, tNow); assert.equal(c.tMax, tNow + 72); });
-test('1× avança 1 h por segundo', () => { const c = mk(); c.play(); for (let i = 0; i < 10; i++) c.tick(0.1); near(c.t, tNow + 1, 1e-9); });
+test('1× avança 1 h a cada 3 s', () => { const c = mk(); c.play(); for (let i = 0; i < 30; i++) c.tick(0.1); near(c.t, tNow + 1, 1e-9); });
 test('4× e 0,5×', () => {
-  const c = mk(); c.play(); c.setSpeed(4); for (let i = 0; i < 10; i++) c.tick(0.1); near(c.t, tNow + 4, 1e-9);
-  c.setSpeed(0.5); for (let i = 0; i < 10; i++) c.tick(0.1); near(c.t, tNow + 4.5, 1e-9);
+  const c = mk(); c.play(); c.setSpeed(4); for (let i = 0; i < 30; i++) c.tick(0.1); near(c.t, tNow + 4, 1e-9);
+  c.setSpeed(0.5); for (let i = 0; i < 30; i++) c.tick(0.1); near(c.t, tNow + 4.5, 1e-9);
 });
 test('velocidade inválida é ignorada', () => { const c = mk(); c.setSpeed(99); assert.equal(c.speed, 1); });
 test('dt gigante é limitado (aba voltou depois de 1 h)', () => { const c = mk(); c.play(); c.tick(3600); assert(c.t - tNow <= 0.1 + 1e-9); });

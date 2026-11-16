@@ -1,5 +1,6 @@
-// Relógio da linha do tempo (puro). t em horas desde o primeiro timestamp; 1× = 1 h de previsão por segundo.
+// Relógio da linha do tempo (puro). t em horas desde o primeiro timestamp; 1× = 1 h de previsão a cada 3 s.
 const SPEEDS = [0.5, 1, 4];
+export const HOURS_PER_SEC = 1 / 3;   // 1 h/s (o plano original) ficava rápido demais para acompanhar as nuvens
 const MAX_DT = 0.1;       // aba voltando depois de horas não faz a linha do tempo pular
 
 export function createClock({ tNow, tEnd72, tEndAll }) {
@@ -13,7 +14,7 @@ export function createClock({ tNow, tEnd72, tEndAll }) {
     get tMin() { return tNow; }, get tMax() { return tMax(); }, get tNow() { return tNow; },
     tick(dt) {
       if (!playing || !(dt > 0)) return;
-      t += Math.min(dt, MAX_DT) * speed;
+      t += Math.min(dt, MAX_DT) * speed * HOURS_PER_SEC;
       if (t >= tMax()) { t = tMax(); playing = false; }
       emit();
     },

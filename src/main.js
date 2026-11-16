@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { createScene } from './render/scene.js';
 import { createMap } from './render/map.js';
+import { createReliefMap } from './render/relief-map.js';
+import { loadRelief } from './data/relief.js';
 import { createClouds } from './render/clouds.js';
 import { createSolidClouds } from './render/clouds-solid.js';
-import { createVolumeClouds } from './render/clouds-volume.js';
+import { createVolumeClouds, startCloudNoise } from './render/clouds-volume.js';
 import { createRain, MAX_PER_COLUMN } from './render/rain.js';
 import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
@@ -17,6 +19,9 @@ import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
 import { createTooltip } from './ui/tooltip.js';
 import { createLegend } from './ui/legend.js';
+import { createCityLift } from './render/city-lift.js';
+import { createCityPanel } from './ui/city-panel.js';
+import { createCitySelect } from './ui/city-select.js';
 import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -30,6 +35,8 @@ const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350
 const NUVENS = params.get('nuvens');
 const SOLID = NUVENS !== 'sprite';                      // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
 const VOLUME = NUVENS === 'volume';                     // protótipo: nuvens volumétricas (raymarching)
+const RELEVO = params.get('relevo') === '1';            // spike: mapa com relevo; &exagero=N muda o exagero vertical (padrão 12)
+const noiseReady = VOLUME ? startCloudNoise() : null;   // o ruído 3D é gerado num worker enquanto o resto carrega
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -43,7 +50,6 @@ function sceneBounds(grid) {
 /** Junta nuvens sólidas (baixa, média) e sprites (alta) numa interface só. */
 function combineClouds(solid, high) {
   const both = [solid, high];
-  solid.setCirrus?.(high.mesh);
   return {
     objects: [solid.shadow, solid.mesh, high.shadow, high.mesh],
     update: (f, t, now) => both.forEach((c) => c.update(f, t, now)),
@@ -78,7 +84,12 @@ function createView(canvas) {
 }
 
 async function run(geo, grid, view) {
-  const map = createMap(geo);
+  let map;
+  if (RELEVO) {
+    try { map = createReliefMap(geo, await loadRelief('./assets/relief.bin.gz'), { exag: Number(params.get('exagero')) || 12 }); }
+    catch (e) { console.warn('relevo indisponível, seguindo com o mapa plano', e); }
+  }
+  map ??= createMap(geo);
   view.scene.add(map);
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
   view.scene.add(lights.hemi, lights.sun);
@@ -97,18 +108,34 @@ async function run(geo, grid, view) {
   const clock = createClock({ tNow, tEnd72: Math.min(tNow + 72, field.nT - 1), tEndAll: field.nT - 1 });
   if (params.has('t')) { const off = Number(params.get('t')); if (off > 72) clock.setRange('7d'); clock.seek(tNow + off); }   // só roteiros: abre pausado nesse instante
   createTimeline(document.getElementById('timeline'), { clock, times: field.times, rainByHour: field.rainShareByHour() });
+  // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
+  new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
-  createTooltip(document.getElementById('tooltip'), {
-    canvas: view.renderer.domElement, pick: (x, y) => view.pick(map.userData.land, x, y), field, clock, municipios: geo.municipios,
+  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: map.userData.heightLL });
+  view.scene.add(lift.group);
+  const { inside } = map.userData;                         // relevo: a malha cobre o retângulo, a máscara diz o que é estado
+  const pickLand = (x, y) => {
+    const hit = view.pick(lift.mesh ? [lift.mesh, map.userData.land] : map.userData.land, x, y);
+    return hit && (!inside || inside(hit.x, hit.z)) ? hit : null;
+  };
+  // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
+  const tooltip = createTooltip(document.getElementById('tooltip'), {
+    canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false,
+  });
+  let citySelect = null;
+  const panel = createCityPanel(document.getElementById('city'), { clock, field, onClose: () => citySelect.close() });
+  citySelect = createCitySelect({
+    canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios,
+    onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); },
   });
 
   // slots só onde há dado: dentro da célula de algum nó da grade
   const bounds = sceneBounds(grid);
   const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
   const slotsFor = (counts) => counts.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept }));
-  const lowMid = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds }) : SOLID ? createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }) : null;
-  const clouds = lowMid ? combineClouds(
-    lowMid,
+  // volume: as três camadas num volume só (sem sprites, então nada para ordenar entre camadas)
+  const clouds = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds, noise: await noiseReady }) : SOLID ? combineClouds(
+    createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }),
     // cirros continuam finos e translúcidos (sprite), só na camada alta
     createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), makeSlots({ ...bounds, count: SLOT_COUNTS.clouds[2], seed: 103, accept })] }),
   ) : createClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.clouds) });
@@ -122,7 +149,7 @@ async function run(geo, grid, view) {
   applyQuality(quality.level);
 
   const perf = { fps: 60, frameMs: 16.7 };
-  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
+  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), cloudInfo: clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
   const debug = DEBUG ? createDebug(document.getElementById('debug'), { stats }) : null;
   const dots = DEBUG ? createGridDots(grid) : null;
   if (dots) view.scene.add(dots.points);
@@ -147,6 +174,7 @@ async function run(geo, grid, view) {
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
     clouds.setFlashes(lightning.frame(now, dt, clock.playing));
+    lift.frame(dt);
     clouds.frame(now, view.camera);
     rain.frame(now);
     debug?.tick(dt);
@@ -159,7 +187,7 @@ async function run(geo, grid, view) {
       requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; });
     }
   });
-  if (DEBUG) window.__rs = { field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (DEBUG) window.__rs = { citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
   // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo);
   // e também a cada 5 min com a aba visível (mapa aberto num segundo monitor não fica com dado velho e selo de atual)
   const loadedAt = Date.now() / 1000;

@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 
 const URL = 'https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-43-mun.json';
 const OUT = 'assets/rs.json';
+const OUT_MUN = 'assets/municipios.json';      // polígono por município, carregado só ao clicar no mapa
 const MAX_BYTES = 350 * 1024;
 const STEP = 0.25;
 const MIN_RING_KM2 = 50;
@@ -85,6 +86,16 @@ function build(pct) {
 let pct = 40, json = build(pct);
 while (Buffer.byteLength(json) > MAX_BYTES && pct > 0.5) { pct = Math.round(pct * 0.8 * 10) / 10; json = build(pct); }
 writeFileSync(OUT, json);
+
+// --- polígono de cada município (mesma simplificação das bordas, para casar com o desenho) ---
+const trueKm2 = (ring) => { const c = ringCentroid(ring); return c.area * 111.32 * 111.32 * Math.cos((c.y * Math.PI) / 180); };
+const polyKm2 = (p) => trueKm2(p[0]) - p.slice(1).reduce((s, h) => s + trueKm2(h), 0);
+const areaById = new Map(src.features.map((f) => [f.properties.id, polysOf(f.geometry).reduce((s, p) => s + polyKm2(p), 0)]));
+const simpFeatures = JSON.parse(readFileSync(join(dir, 'simp.json'), 'utf8')).features;
+const items = simpFeatures.map((f) => [f.properties.id, f.properties.name, Math.round(areaById.get(f.properties.id)), polysOf(f.geometry).map((p) => p.map(flat))])
+  .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+writeFileSync(OUT_MUN, JSON.stringify({ gridVersion, items }));
+console.log(`${OUT_MUN}: ${statSync(OUT_MUN).size} bytes, ${items.length} municípios`);
 const o = JSON.parse(json);
 console.log(`${OUT}: ${statSync(OUT).size} bytes, simplify ${pct}%`);
 console.log(`municípios ${municipios.length}; grade ${nx}x${ny}, ${nInside} dentro, ${cells.length} com borda; ${gridVersion}`);

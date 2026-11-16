@@ -29,7 +29,7 @@ export function tooltipLines(city, c) {
 }
 
 /** pick(clientX, clientY) devolve { x, z } na cena se o ponteiro está sobre o estado, senão null. */
-export function createTooltip(el, { canvas, pick, field, clock, municipios }) {
+export function createTooltip(el, { canvas, pick, field, clock, municipios, tapToShow = true }) {
   let last = null;                                   // última posição com tooltip aberto
   const row = (k, v) => `<div class="tt-row"><span>${k}</span><b>${v}</b></div>`;
   function hide() { el.hidden = true; last = null; }
@@ -60,7 +60,7 @@ export function createTooltip(el, { canvas, pick, field, clock, municipios }) {
   canvas.addEventListener('pointerup', (e) => {
     const tap = down && !down.moved;
     down = null;
-    if (e.pointerType !== 'mouse' && tap) show(e.clientX, e.clientY);     // toque sem arrasto abre; toque fora do estado fecha
+    if (e.pointerType !== 'mouse' && tap && tapToShow) show(e.clientX, e.clientY);     // toque sem arrasto abre; toque fora do estado fecha
   });
   canvas.addEventListener('pointercancel', () => { down = null; });
   canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
