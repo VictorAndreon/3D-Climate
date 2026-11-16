@@ -42,7 +42,11 @@ const { serve, launch, open } = require('./lib.cjs');
 
   // Review Focus 4: município selecionado sobrevive à troca de mapa
   await page.evaluate(() => __rs.citySelect.selectByName('Porto Alegre'));
+  const liftTop = () => page.evaluate(() => { const g = __rs.view.scene.getObjectByName('city').geometry; g.computeBoundingBox(); return g.boundingBox.max.y; });
+  const topRelief = await liftTop();
   await page.evaluate(() => __rs.stage.setRelief(false));
+  const topFlat = await liftTop();
+  check('peça levantada desce para a altura do mapa plano', topRelief > topFlat + 0.01, `${topRelief.toFixed(3)} -> ${topFlat.toFixed(3)}`);
   check('município continua selecionado ao desligar o relevo',
     await page.evaluate(() => !document.getElementById('city').hidden && /Porto Alegre/.test(document.getElementById('city').textContent)));
   await page.keyboard.press('Escape');
@@ -108,6 +112,23 @@ const { serve, launch, open } = require('./lib.cjs');
   await m.check('input[name=dados][value=fixture]');
   await m.waitForURL(/fixture=1/); await m.waitForFunction(() => document.documentElement.dataset.ready === '1');
   check('Dados troca a fonte recarregando', await m.evaluate(() => !location.search.includes('demo=1')));
+
+  // rajada pelo menu: controles, URL e palco terminam iguais
+  const { page: r } = await open(browser, srv.url, 'demo=1&debug=1');
+  await r.evaluate(() => { document.querySelector('input[name=nuvens][value=volume]').click(); document.querySelector('input[name=nuvens][value=sprite]').click(); });
+  await r.waitForFunction(() => location.search.includes('nuvens=sprite'));
+  await r.evaluate(() => __rs.stage.idle()); await r.waitForTimeout(200);
+  check('rajada no menu: rádio, URL e palco em sprite', await r.evaluate(() => document.querySelector('input[name=nuvens]:checked').value === 'sprite' && __rs.stage.state.nuvens === 'sprite' && !location.search.includes('volume')));
+  await r.close();
+
+  // relevo indisponível já na abertura (?relevo=1): menu não pode marcar relevo sobre o mapa plano
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.route('**/relief.bin.gz', (rt) => rt.abort());
+  const { page: b0 } = await open(ctx, srv.url, 'demo=1&debug=1&relevo=1&exagero=20');
+  check('abertura com relevo falho: desmarcado, aviso, URL sem relevo', await b0.evaluate(() => !document.querySelector('input[name=relevo]').checked
+    && document.querySelector('input[name=exagero]').disabled && document.querySelector('.dbg-msg').textContent.includes('Relevo indisponível') && !location.search.includes('relevo')),
+    await b0.evaluate(() => `${document.querySelector('input[name=relevo]').checked} "${document.querySelector('.dbg-msg').textContent}" ${location.search}`));
+  await ctx.close();
 
   // Review Focus 3: relevo indisponível
   const { page: f } = await open(browser, srv.url, 'demo=1');

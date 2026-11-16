@@ -106,6 +106,8 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
     if (e.key === 'Escape') { setOpen(false); button.focus(); }
   });
 
+  // o que está na tela manda: se o relevo pedido na URL não carregou, o menu abre desmarcado, com aviso, e a URL é corrigida
+  if (config.relevo && !stage.state.relevo) { cfg.relevo = false; say('Relevo indisponível.'); writeUrl(); }
   sync();
   setOpen(cfg.debug);
   let acc = 0;
