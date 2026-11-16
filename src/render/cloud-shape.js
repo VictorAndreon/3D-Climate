@@ -38,3 +38,14 @@ export function towerLevels({ radius, height, stack = 1 }) {
   if (stack > 1) { const top = out[out.length - 1]; out.push({ y: top.y + top.height * 0.8, radius: radius * 1.6, height: radius * 1.6 * 0.32, anvil: true }); }
   return out;
 }
+
+/**
+ * Força da trovoada (0 = não troveja; 0,35 a 1). Com granizo (96/99) é sempre 1; sem granizo (95) cresce com a chuva.
+ * A torre sobe com a força; a bigorna só aparece na trovoada forte.
+ */
+export function stormStrength(code, rain) {
+  if (!(code >= 95 && code <= 99)) return 0;
+  return code >= 96 ? 1 : clamp(0.35 + (0.65 * rain) / 4, 0.35, 1);
+}
+/** Quanto de bigorna (0..1) uma trovoada dessa força tem. */
+export const anvilAmount = (strength) => clamp((strength - 0.55) / 0.35, 0, 1);

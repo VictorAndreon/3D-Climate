@@ -92,6 +92,7 @@ test('storm só com código 95–99 na hora ativa', () => {
   [0, 61, 94, 95, 96, 99, 100].forEach((c, i) => { s.code[p * NT + i + 1] = c; });
   const w = createWeatherField(grid, s);
   assert.deepEqual([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].map((t) => w.storm(C[0], C[1], t)), [false, false, false, true, true, true, false]);
+  assert.deepEqual([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].map((t) => w.stormCode(C[0], C[1], t)), [0, 0, 0, 95, 96, 99, 0]);
 });
 test('bordas do domínio: valores finitos, sem exceção', () => {
   for (const t of [0, NT - 1, -5, 999, 0.0001, NT - 1.0001]) for (const [lon, lat] of [C, [-74, -10], [-54, -31], [-52.25, -29.25]]) {

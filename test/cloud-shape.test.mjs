@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solidPuffShape, towerLevels, SOLID_LAYERS } from '../src/render/cloud-shape.js';
+import { solidPuffShape, towerLevels, SOLID_LAYERS, stormStrength, anvilAmount } from '../src/render/cloud-shape.js';
 
 const base = { layer: 0, cover01: 0.6, presence: 1, rain: 0, storm: false, size01: 0.5 };
 test('sem presença, raio 0 (nada desenhado)', () => assert.equal(solidPuffShape({ ...base, presence: 0 }).radius, 0));
@@ -47,4 +47,16 @@ test('torre de trovoada termina em bigorna: nível do topo largo e achatado', ()
   assert(anvil.radius > 1.4 * lv[0].radius, 'bigorna mais larga que a base da torre');
   assert(anvil.height / anvil.radius <= 0.45, 'bigorna achatada');
   assert(anvil.y >= Math.max(...lv.slice(0, -1).map((l) => l.y + 0.8 * l.height)), 'bigorna no topo');
+});
+
+test('força da trovoada: zero fora de 95–99, cheia com granizo, cresce com a chuva sem granizo', () => {
+  for (const c of [0, 61, 94, 100]) assert.equal(stormStrength(c, 10), 0);
+  assert.equal(stormStrength(96, 0), 1); assert.equal(stormStrength(99, 0.2), 1);
+  assert.equal(stormStrength(95, 0), 0.35); assert.equal(stormStrength(95, 4), 1); assert.equal(stormStrength(95, 50), 1);
+  assert(stormStrength(95, 1) < stormStrength(95, 2) && stormStrength(95, 2) < stormStrength(95, 3));
+});
+test('bigorna só na trovoada forte', () => {
+  assert.equal(anvilAmount(stormStrength(95, 0.4)), 0);
+  assert.equal(anvilAmount(stormStrength(96, 0)), 1);
+  assert(anvilAmount(stormStrength(95, 2.5)) > 0 && anvilAmount(stormStrength(95, 2.5)) < 1);
 });

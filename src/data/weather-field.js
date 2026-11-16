@@ -79,6 +79,12 @@ export function createWeatherField(grid, series) {
     return c >= 95 && c <= 99;
   }
 
+  /** Código da trovoada na hora ativa (95 = sem granizo, 96/99 = com granizo), ou 0 se não troveja. */
+  function stormCode(lon, lat, t) {
+    const c = code[grid.nearest(lon, lat) * nT + activeHour(t)];
+    return c >= 95 && c <= 99 ? c : 0;
+  }
+
   function cellInfo(lon, lat, t) {
     if (grid.distCells(lon, lat) > 1) return null;
     const p = grid.nearest(lon, lat), h = activeHour(t), hr = Math.round(clamp(t, 0, nT - 1));
@@ -109,5 +115,5 @@ export function createWeatherField(grid, series) {
     return { precip: at(precip), code: at(code), low: at(low), mid: at(mid), high: at(high), windSpeed: at(windSpeed), windDir: at(windDir) };
   }
 
-  return { nT, times, sample, rain, storm, cellInfo, activeHour, anyRainByHour, rainShareByHour, point };
+  return { nT, times, sample, rain, storm, stormCode, cellInfo, activeHour, anyRainByHour, rainShareByHour, point };
 }

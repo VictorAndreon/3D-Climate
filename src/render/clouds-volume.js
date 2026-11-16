@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { toLonLat } from '../geo/projection.js';
 import { clamp } from '../util/rng.js';
 import { makeCloudNoise, makeNoiseChannel, interleave } from './cloud-noise.js';
+import { stormStrength, anvilAmount } from './cloud-shape.js';
 
 const MAX_FLASH = 8, FIELD_N = 64;
 const MIN_COVER = 15, RAIN_MIN_LOW = 60;
@@ -44,7 +45,11 @@ float cloudDensity(vec3 p, vec4 f, vec4 g, vec2 v, bool fine, float lod, out flo
   vec3 D = vec3(uDrift.x, 0.0, uDrift.y);
   if (f.r > 0.004) {                                                  // camada baixa: cúmulos
     float base = 4.0 + 0.9 * v.y * (1.0 - smoothstep(0.0, 0.4, g.z)); // onde chove a base desce até o topo da chuva
-    float H = mix((1.3 + 3.4 * f.r) * (0.4 + 1.2 * v.x) + 1.3 * g.z, 8.2, f.a);   // torre: sempre até a bigorna
+    // torre: sobe com a força da trovoada, até a bigorna. No miolo de um aglomerado grande (bigorna cheia) ela se
+    // reparte em colunas, com nuvem mais baixa entre elas; célula isolada continua uma torre só.
+    float ta = f.a;
+    if (ta > 0.02) ta *= mix(1.0, smoothstep(0.38, 0.6, textureLod(uNoise, vec3((p.xz - uDrift) / 13.0, 0.63), 0.0).r), smoothstep(0.45, 0.85, f.b));
+    float H = mix((1.3 + 3.4 * f.r) * (0.4 + 1.2 * v.x) + 1.3 * g.z, 8.2, ta);
     float h = (p.y - base) / H;
     if (h > 0.0 && h < 1.0) {
       // vento local: a forma grande é arrastada pelo vento DAQUELE ponto, em dois ciclos defasados que se revezam
@@ -57,7 +62,7 @@ float cloudDensity(vec3 p, vec4 f, vec4 g, vec2 v, bool fine, float lod, out flo
       // o limiar sobe com a altura: a nuvem afina para cima e cada bolha chega a uma altura diferente;
       // e fecha em 1 na base, para a base não ser um plano cortado a régua
       float need = 1.0 - min(1.0, 1.12 * pow(f.r, 0.75));
-      need += (1.0 - need) * max(pow(h, 1.4) * (1.0 - 0.45 * f.a), 1.0 - smoothstep(0.0, 0.14, h));
+      need += (1.0 - need) * max(pow(h, 1.4) * (1.0 - 0.45 * ta), 1.0 - smoothstep(0.0, 0.14, h));
       float b = clamp((s - need) / 0.13, 0.0, 1.0);
       if (b > 0.0) { if (fine) b = erode(b, (p - D * 1.6) / 8.0, lod); d += b; hn = h; }
     }
@@ -269,7 +274,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
 
   // campo do tempo assado em duas texturas: (baixa, média, bigorna, torre) e (vento x, vento z, escuro)
   const { minX, maxX, minZ, maxZ } = bounds, N = FIELD_N;
-  const fdata = new Uint8Array(N * N * 4), gdata = new Uint8Array(N * N * 4), tower = new Float32Array(N * N), tmp = new Float32Array(N * N);
+  const fdata = new Uint8Array(N * N * 4), gdata = new Uint8Array(N * N * 4), tower = new Float32Array(N * N), anvil = new Float32Array(N * N), tmp = new Float32Array(N * N);
   const mkTex = (d) => { const t = new THREE.DataTexture(d, N, N, THREE.RGBAFormat, THREE.UnsignedByteType); t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true; return t; };
   for (let q = 0; q < N * N; q++) { gdata[q * 4] = 128; gdata[q * 4 + 1] = 128; }
   const fieldTex = mkTex(fdata), field2Tex = mkTex(gdata);
@@ -278,17 +283,17 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
     const ll = toLonLat(minX + ((i + 0.5) / N) * (maxX - minX), minZ + ((j + 0.5) / N) * (maxZ - minZ)), q = j * N + i;
     flon[q] = ll.lon; flat[q] = ll.lat; inside[q] = grid.distCells(ll.lon, ll.lat) <= 0.72 ? 1 : 0;   // só onde há dado
   }
-  function blur(passes) {
+  function blur(arr, passes) {
     for (let pass = 0; pass < passes; pass++) {
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         let s = 0, n = 0;
         for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
           const a = i + di, b = j + dj;
-          if (a >= 0 && a < N && b >= 0 && b < N) { s += tower[b * N + a]; n++; }
+          if (a >= 0 && a < N && b >= 0 && b < N) { s += arr[b * N + a]; n++; }
         }
         tmp[j * N + i] = s / n;
       }
-      tower.set(tmp);
+      arr.set(tmp);
     }
   }
 
@@ -348,26 +353,26 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
       let lowC = 0, midC = 0, highC = 0, dark = 0, tw = 0, wx = 0, wz = 0;
       if (inside[q]) {
         field.sample(flon[q], flat[q], t, smp);
-        const r = field.rain(flon[q], flat[q], t), storm = field.storm(flon[q], flat[q], t);
+        const r = field.rain(flon[q], flat[q], t), storm = stormStrength(field.stormCode(flon[q], flat[q], t), r);
         let c = smp.low;
         if (r > 0 && c < RAIN_MIN_LOW) c = RAIN_MIN_LOW;       // não chove de céu limpo
         lowC = clamp((c - MIN_COVER) / (100 - MIN_COVER), 0, 1);
         midC = clamp((smp.mid - MIN_COVER) / (100 - MIN_COVER), 0, 1);
         highC = clamp((smp.high - MIN_COVER) / (100 - MIN_COVER), 0, 1);
         dark = storm ? 1 : r > 0 ? 0.45 + 0.55 * clamp(r / 8, 0, 1) : 0;   // escuro avaliado onde a nuvem está
-        tw = storm ? 1 : 0;
+        tw = storm;
         // vento do dado: para onde sopra (leste = +x, norte = -z), velocidade cheia a partir de 40 km/h
         if (smp.speed > 0.01) { const k = Math.min(1, smp.speed / 40) / smp.speed; wx = smp.u * k; wz = -smp.v * k; }
         sx += wx; sz += wz; n++;
       }
-      fdata[q * 4] = lowC * 255; fdata[q * 4 + 1] = midC * 255; tower[q] = tw;
+      fdata[q * 4] = lowC * 255; fdata[q * 4 + 1] = midC * 255; tower[q] = tw; anvil[q] = anvilAmount(tw);
       gdata[q * 4] = 127.5 + 127.5 * wx; gdata[q * 4 + 1] = 127.5 + 127.5 * wz; gdata[q * 4 + 2] = dark * 255; gdata[q * 4 + 3] = highC * 255;
     }
     meanX = n ? (sx / n) * VMAX : 0; meanZ = n ? (sz / n) * VMAX : 0;
-    blur(2);                                                   // torre com borda suave (senão vira um paredão quadrado)
+    blur(tower, 2);                                            // torre com borda suave (senão vira um paredão quadrado)
     for (let q = 0; q < N * N; q++) fdata[q * 4 + 3] = tower[q] * 255;
-    blur(4);                                                   // a bigorna transborda para além da célula de trovoada
-    for (let q = 0; q < N * N; q++) fdata[q * 4 + 2] = Math.min(1, tower[q] * 1.8) * 255;
+    blur(anvil, 6);                                            // a bigorna transborda para além da célula de trovoada (só a forte tem)
+    for (let q = 0; q < N * N; q++) fdata[q * 4 + 2] = Math.min(1, anvil[q] * 1.8) * 255;
     fieldTex.needsUpdate = true; field2Tex.needsUpdate = true;
   }
 
