@@ -419,6 +419,11 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
 
   return {
     mesh, shadow, update, frame, objects: [shadow, mesh],
+    // os uniforms apontam para texturas dos alvos de render, então aqui cada coisa é liberada pelo dono
+    dispose() {
+      for (const o of [mesh, shadow, marchScene.children[0], resolveScene.children[0]]) { o.geometry.dispose(); o.material.dispose(); }
+      for (const t of [noiseTex, fieldTex, field2Tex, target, ...acc]) t.dispose();
+    },
     visibleCount: () => 0,
     info: () => `volume ${target.width}×${target.height} · ${uniforms.uSteps.value} passos`,
     setFlashes(list) { for (let i = 0; i < MAX_FLASH; i++) { const f = list[i]; if (f) flashes[i].set(f.x, f.z, f.radius, f.intensity); else flashes[i].w = 0; } },

@@ -2,6 +2,7 @@
 // do estado por uma máscara (alphaTest), paredes laterais que seguem a altitude da borda e bordas
 // municipais coladas no terreno. Mesma interface de createMap: userData { land, borders, ground }.
 import * as THREE from 'three';
+import { disposeObject } from './dispose.js';
 import { toScene, toLonLat } from '../geo/projection.js';
 import { createGround } from './map.js';
 
@@ -123,6 +124,6 @@ export function createReliefMap(geo, relief, { exag = 12 } = {}) {
   const ground = createGround();
   group.add(ground);
 
-  group.userData = { land, borders, ground, inside, heightAt, heightLL };
+  group.userData = { land, borders, ground, inside, heightAt, heightLL, dispose: () => disposeObject(group) };
   return group;
 }

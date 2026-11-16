@@ -1,6 +1,7 @@
 // Nuvens: um único desenho instanciado de billboards para as três camadas, ordenado de trás para frente.
 // Visibilidade por limiar: cada slot tem um limiar u; o puff aparece quando a cobertura remapeada passa de u.
 import * as THREE from 'three';
+import { disposeObject } from './dispose.js';
 import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 import { clamp, smoothstep, mulberry32 } from '../util/rng.js';
 
@@ -250,6 +251,7 @@ export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) 
 
   return {
     mesh, shadow, count: N, update, sort, frame,
+    dispose() { disposeObject(mesh); disposeObject(shadow); },
     visibleCount: () => visible,
     setFlashes(list) { for (let i = 0; i < MAX_FLASH; i++) { const f = list[i]; if (f) flashes[i].set(f.x, f.z, f.radius, f.intensity); else flashes[i].w = 0; } },
     setSky(sky) {

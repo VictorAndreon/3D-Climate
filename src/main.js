@@ -1,19 +1,17 @@
 import * as THREE from 'three';
 import { createScene } from './render/scene.js';
-import { createMap } from './render/map.js';
-import { createReliefMap } from './render/relief-map.js';
 import { loadRelief } from './data/relief.js';
-import { createClouds } from './render/clouds.js';
-import { createSolidClouds } from './render/clouds-solid.js';
-import { createVolumeClouds, startCloudNoise } from './render/clouds-volume.js';
-import { createRain, MAX_PER_COLUMN } from './render/rain.js';
+import { startCloudNoise } from './render/clouds-volume.js';
+import { createStage } from './render/stage.js';
+import { createRain } from './render/rain.js';
 import { createLightning } from './render/lightning.js';
 import { skyState, applySky, localHour } from './render/light.js';
 import { makeSlots } from './render/slots.js';
 import { makeGrid } from './data/grid.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
-import { createDebug, createGridDots } from './ui/debug.js';
+import { createDebug } from './ui/debug.js';
+import { parseConfig } from './ui/config.js';
 import { createQuality, LEVELS } from './render/quality.js';
 import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
@@ -30,14 +28,12 @@ import { normalizeResponse, buildSeries } from './data/normalize.js';
 import { toScene, toLonLat, CELL_X, CELL_Z } from './geo/projection.js';
 
 const params = new URLSearchParams(location.search);
-const DEBUG = params.get('debug') === '1';
-// tetos do nível alto: 6.000 puffs; 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
-const SLOT_COUNTS = { clouds: [2600, 2000, 1400], solid: [1150, 800], rain: 1350 };
-const NUVENS = params.get('nuvens');
-const SOLID = NUVENS !== 'sprite';                      // padrão: nuvens sólidas 3D; ?nuvens=sprite volta ao antigo
-const VOLUME = NUVENS === 'volume';                     // protótipo: nuvens volumétricas (raymarching)
-const RELEVO = params.get('relevo') === '1';            // spike: mapa com relevo; &exagero=N muda o exagero vertical (padrão 12)
-const noiseReady = VOLUME ? startCloudNoise() : null;   // o ruído 3D é gerado num worker enquanto o resto carrega
+const cfg = parseConfig(location.search);                // estado inicial do menu de debug: nuvens, relevo, grade, qualidade, dados
+const SLOT_RAIN = 1350;                                   // 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
+let noiseP = null;                                        // o ruído 3D do volume é gerado num worker, uma vez só
+const loadNoise = () => (noiseP ??= startCloudNoise());
+if (cfg.nuvens === 'volume') loadNoise();                 // já vai gerando enquanto o resto carrega
+const QUALITY_LEVEL = { alto: 0, medio: 1, baixo: 2 };
 
 function sceneBounds(grid) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -46,20 +42,6 @@ function sceneBounds(grid) {
     minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minZ = Math.min(minZ, s.z); maxZ = Math.max(maxZ, s.z);
   }
   return { minX: minX - CELL_X, maxX: maxX + CELL_X, minZ: minZ - CELL_Z, maxZ: maxZ + CELL_Z };
-}
-
-/** Junta nuvens sólidas (baixa, média) e sprites (alta) numa interface só. */
-function combineClouds(solid, high) {
-  const both = [solid, high];
-  return {
-    objects: [solid.shadow, solid.mesh, high.shadow, high.mesh],
-    update: (f, t, now) => both.forEach((c) => c.update(f, t, now)),
-    frame: (now, cam) => both.forEach((c) => c.frame(now, cam)),
-    setFlashes: (l) => both.forEach((c) => c.setFlashes(l)),
-    setSky: (s) => both.forEach((c) => c.setSky(s)),
-    setQuality: (q) => both.forEach((c) => c.setQuality(q)),
-    visibleCount: () => solid.visibleCount() + high.visibleCount(),
-  };
 }
 
 function fatal(msg) {
@@ -85,19 +67,21 @@ function createView(canvas) {
 }
 
 async function run(geo, grid, view) {
-  let map;
-  if (RELEVO) {
-    try { map = createReliefMap(geo, await loadRelief('./assets/relief.bin.gz'), { exag: Number(params.get('exagero')) || 12 }); }
-    catch (e) { console.warn('relevo indisponível, seguindo com o mapa plano', e); }
-  }
-  map ??= createMap(geo);
-  view.scene.add(map);
+  // slots só onde há dado: dentro da célula de algum nó da grade
+  const bounds = sceneBounds(grid);
+  const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
+  const slots = (count, seed) => makeSlots({ ...bounds, count, seed, accept });
+  let onSwap = () => {};                                     // preenchido quando céu, relógio e seleção existirem
+  const stage = createStage({
+    view, geo, grid, bounds, slots, loadNoise, loadRelief: () => loadRelief('./assets/relief.bin.gz'),
+    onSwap: (what) => onSwap(what),
+  });
+  await stage.setRelief(cfg.relevo, cfg.exagero).catch((e) => console.warn('relevo indisponível, seguindo com o mapa plano', e));
   const lights = { hemi: new THREE.HemisphereLight(), sun: new THREE.DirectionalLight(), tmp: new THREE.Color() };
   view.scene.add(lights.hemi, lights.sun);
 
-  const mode = params.get('demo') === '1' ? 'demo' : params.get('fixture') === '1' ? 'fixture' : 'live';
   const data = await loadWeather({
-    mode, grid, gridVersion: geo.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
+    mode: cfg.dados, grid, gridVersion: geo.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
     deps: {
       fetchForecast, loadCache, saveCache, syntheticSeries,
       loadFixture: async () => buildSeries(grid, normalizeResponse(await (await fetch('./assets/fixture.json')).json())),
@@ -112,11 +96,11 @@ async function run(geo, grid, view) {
   // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
   new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
-  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: map.userData.heightLL });
+  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: (lon, lat) => stage.map.userData.heightLL?.(lon, lat) ?? 0 });
   view.scene.add(lift.group);
-  const { inside } = map.userData;                         // relevo: a malha cobre o retângulo, a máscara diz o que é estado
   const pickLand = (x, y) => {
-    const hit = view.pick(lift.mesh ? [lift.mesh, map.userData.land] : map.userData.land, x, y);
+    const { land, inside } = stage.map.userData;             // relevo: a malha cobre o retângulo, a máscara diz o que é estado
+    const hit = view.pick(lift.mesh ? [lift.mesh, land] : land, x, y);
     return hit && (!inside || inside(hit.x, hit.z)) ? hit : null;
   };
   // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
@@ -139,42 +123,41 @@ async function run(geo, grid, view) {
     },
   });
 
-  // slots só onde há dado: dentro da célula de algum nó da grade
-  const bounds = sceneBounds(grid);
-  const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
-  const slotsFor = (counts) => counts.map((count, i) => makeSlots({ ...bounds, count, seed: 101 + i, accept }));
-  // volume: as três camadas num volume só (sem sprites, então nada para ordenar entre camadas)
-  const clouds = VOLUME ? createVolumeClouds({ renderer: view.renderer, grid, bounds, noise: await noiseReady }) : SOLID ? combineClouds(
-    createSolidClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.solid) }),
-    // cirros continuam finos e translúcidos (sprite), só na camada alta
-    createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), makeSlots({ ...bounds, count: SLOT_COUNTS.clouds[2], seed: 103, accept })] }),
-  ) : createClouds({ slotsByLayer: slotsFor(SLOT_COUNTS.clouds) });
-  const rain = createRain({ slots: makeSlots({ ...bounds, count: SLOT_COUNTS.rain, seed: 201, accept }) });
+  await stage.setClouds(cfg.nuvens);
+  const rain = createRain({ slots: slots(SLOT_RAIN, 201) });
   const lightning = createLightning({ grid });
-  view.scene.add(...clouds.objects ?? [clouds.shadow, clouds.mesh], rain.mesh, lightning.object3d);
+  view.scene.add(rain.mesh, lightning.object3d);
 
   // qualidade adaptativa: desce com quadro lento, sobe só depois de 10 s folgados
   const quality = createQuality({});
-  function applyQuality(level) { const q = LEVELS[level]; clouds.setQuality(q); rain.setQuality(q); view.setPixelRatio(q.pixelRatio); }
+  if (cfg.qualidade !== 'auto') quality.lock(QUALITY_LEVEL[cfg.qualidade]);
+  function applyQuality(level) { const q = LEVELS[level]; stage.clouds.setQuality(q); rain.setQuality(q); view.setPixelRatio(q.pixelRatio); }
   applyQuality(quality.level);
 
   const perf = { fps: 60, frameMs: 16.7 };
-  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: clouds.visibleCount(), cloudInfo: clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
-  const debug = DEBUG ? createDebug(document.getElementById('debug'), { stats }) : null;
-  const dots = DEBUG ? createGridDots(grid) : null;
-  if (dots) view.scene.add(dots.points);
+  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: stage.clouds.visibleCount(), cloudInfo: stage.clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
+  const debug = cfg.debug ? createDebug(document.getElementById('debug'), { stats }) : null;
+  stage.setDots(cfg.grade);
 
   function refresh(now) {
     const sky = skyState(localHour(field.times[0] + clock.t * 3600));
-    applySky(sky, { renderer: view.renderer, lights, ground: map.userData.ground, clouds, rain });
-    clouds.update(field, clock.t, now);
+    applySky(sky, { renderer: view.renderer, lights, ground: stage.map.userData.ground, clouds: stage.clouds, rain });
+    stage.clouds.update(field, clock.t, now);
     rain.update(field, clock.t);
     lightning.update(field, clock.t);
-    dots?.update(field, clock.t);
+    stage.dots?.update(field, clock.t);
   }
+  // troca no lugar (menu de debug): o que entrou recebe céu, qualidade e dado antes do próximo quadro
+  let lastNow = 0;
+  onSwap = (what) => {
+    if (what === 'clouds') applyQuality(quality.level);
+    if (what === 'map') citySelect.relift();
+    refresh(lastNow);
+  };
 
   let acc = 1, first = true;
   view.onFrame((now, dt) => {
+    lastNow = now;
     if (dt > 0) {
       perf.frameMs += (dt * 1000 - perf.frameMs) * 0.1; perf.fps = 1000 / perf.frameMs;
       const lvl = quality.push(dt * 1000, now * 1000);
@@ -183,9 +166,9 @@ async function run(geo, grid, view) {
     clock.tick(dt);
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
-    clouds.setFlashes(lightning.frame(now, dt, clock.playing));
+    stage.clouds.setFlashes(lightning.frame(now, dt, clock.playing));
     lift.frame(dt);
-    clouds.frame(now, view.camera);
+    stage.clouds.frame(now, view.camera);
     rain.frame(now);
     debug?.tick(dt);
     if (first) {                                             // primeiro quadro útil: mapa + nuvens já desenhados
@@ -197,7 +180,7 @@ async function run(geo, grid, view) {
       requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; });
     }
   });
-  if (DEBUG) window.__rs = { citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (cfg.debug) window.__rs = { stage, view, memory: () => ({ geometries: view.renderer.info.memory.geometries, textures: view.renderer.info.memory.textures }), citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
   // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo);
   // e também a cada 5 min com a aba visível (mapa aberto num segundo monitor não fica com dado velho e selo de atual)
   const loadedAt = Date.now() / 1000;

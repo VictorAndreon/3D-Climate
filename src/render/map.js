@@ -1,5 +1,6 @@
 // Mapa base: estado extrudado como uma peça só, bordas municipais como uma única geometria de linhas, chão.
 import * as THREE from 'three';
+import { disposeObject } from './dispose.js';
 import { toScene } from '../geo/projection.js';
 
 const THICK = 1, BEVEL = 0.08;
@@ -58,7 +59,7 @@ export function createMap(geo) {
   const ground = createGround();
   group.add(ground);
 
-  group.userData = { land, borders, ground };
+  group.userData = { land, borders, ground, dispose: () => disposeObject(group) };
   return group;
 }
 

@@ -3,6 +3,7 @@
 // Mesma regra de dado das nuvens em sprite: limiar u por slot, nada abaixo de 15% de cobertura,
 // cobertura mínima de 60% na camada baixa onde chove, escurecimento por rain() onde o puff está.
 import * as THREE from 'three';
+import { disposeObject } from './dispose.js';
 import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 import { clamp, smoothstep, mulberry32 } from '../util/rng.js';
 import { SOLID_LAYERS, solidPuffShape, towerLevels } from './cloud-shape.js';
@@ -229,6 +230,7 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
 
   return {
     mesh, shadow, count: N, update,
+    dispose() { disposeObject(mesh); disposeObject(shadow); },
     sort() {},                                                 // opacas: a ordem não importa
     frame(realSeconds) { uniforms.uTime.value = realSeconds; },
     visibleCount: () => visible,

@@ -56,5 +56,8 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, onSele
   // adianta o download quando o navegador estiver ocioso, para o primeiro clique ser imediato
   (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500)))(() => load().catch(() => { loading = null; }));
 
-  return { close, selectAt, selectByName, get current() { return current; } };
+  /** O mapa de baixo trocou (relevo): refaz a peça levantada na altura nova, sem fechar nada. */
+  function relift() { if (current) lift.select(current.polys, { instant: true }); }
+
+  return { close, selectAt, selectByName, relift, get current() { return current; } };
 }

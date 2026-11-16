@@ -48,7 +48,8 @@ export function createCityLift({ reducedMotion = false, groundLL = null } = {}) 
     mesh = outline = halo = null;
   }
 
-  function select(polys) {
+  /** instant: refaz a peça já levantada (o mapa de baixo trocou), sem repetir a subida. */
+  function select(polys, { instant = false } = {}) {
     dispose();
     const shapes = polys.map(([outer, ...holes]) => {
       const s = new THREE.Shape(ring(outer));
@@ -74,7 +75,7 @@ export function createCityLift({ reducedMotion = false, groundLL = null } = {}) 
     halo.renderOrder = 10;
     group.add(mesh, outline, halo);
     group.visible = true;
-    k = reducedMotion ? 1 : 0; dir = 1;
+    k = reducedMotion || instant ? 1 : 0; dir = 1;
     place();
   }
 
