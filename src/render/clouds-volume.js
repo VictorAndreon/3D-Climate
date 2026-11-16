@@ -1,7 +1,7 @@
 // PROTÓTIPO (?nuvens=volume): nuvens baixas e médias como volume de verdade (raymarching).
 // - O WeatherField é "assado" numa textura 2D pequena (cobertura baixa, média, escurecimento, torre) a ~10 Hz.
 // - Um ruído 3D dá a forma; a cobertura do dado é o limiar: mais cobertura = mais nuvem. Nada abaixo de 15%.
-// - O volume é marchado em resolução reduzida num alvo próprio e colado por cima da cena.
+// - O volume é marchado em resolução reduzida num alvo próprio, acumulado entre quadros e colado por cima da cena.
 // Mesmas regras de dado das outras nuvens: mínimo de 60% na baixa onde chove, cinza onde chove, chumbo e torre onde troveja.
 import * as THREE from 'three';
 import { toLonLat } from '../geo/projection.js';
@@ -95,6 +95,8 @@ uniform vec4 uFlash[${MAX_FLASH}];
 uniform vec4 uBox;        // minX, minZ, maxX, maxZ
 uniform float uPix;       // tamanho angular de um pixel do alvo
 uniform int uSteps;
+uniform vec3 uStep;       // passo: mínimo, crescimento por unidade de distância, teto
+uniform float uFrame, uFlashOn;
 varying vec2 vNdc;
 void main() {
   vec4 v4 = uProjInv * vec4(vNdc, 1.0, 1.0);
@@ -107,23 +109,25 @@ void main() {
   vec3 tmn = min(ta, tb), tmx = max(ta, tb);
   float t0 = max(max(tmn.x, tmn.y), max(tmn.z, 0.3)), t1 = min(min(tmx.x, tmx.y), tmx.z);
   if (t1 <= t0) { gl_FragColor = vec4(0.0); return; }
-  // passo geométrico: fino perto da câmera, largo longe, sempre no máximo uSteps passos
-  float k = pow(t1 / t0, 1.0 / float(uSteps)) - 1.0;
-  // início do raio deslocado num padrão 4x4: a colagem tira a média dos 16 e o degrau do passo some
+  // Cada raio começa deslocado: padrão 4x4 no espaço, que anda a cada quadro pela razão áurea. Os 16 vizinhos
+  // cobrem o passo por igual (a média 4x4 anula o padrão) e, com a câmera parada, o tempo faz o mesmo em cada pixel.
   const int BAYER[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
   ivec2 bp = ivec2(gl_FragCoord.xy) & 3;
-  float jit = (float(BAYER[bp.x + bp.y * 4]) + 0.5) / 16.0;
-  float t = t0 * (1.0 + k * jit);
+  float jit = fract((float(BAYER[bp.x + bp.y * 4]) + 0.5) / 16.0 + uFrame * 0.61803399);
+  float t = t0;
+  // trecho curto (câmera alta olhando para baixo): reparte os passos nele, senão 3 ou 4 passos grossos atravessam a camada
+  float fine = max((t1 - t0) / float(uSteps) * 1.5, 0.12);
   float T = 1.0; vec3 col = vec3(0.0);
   float mu = dot(rd, uSunDir);
   float fwd = 0.35 * pow(max(mu, 0.0), 6.0) + 0.12 * (0.5 + 0.5 * mu);      // contra o sol a borda acende
   for (int i = 0; i < 96; i++) {
-    if (i >= uSteps || T < 0.02) break;
-    float dt = t * k;
-    vec3 p = ro + rd * (t + 0.5 * dt);
+    if (i >= uSteps || T < 0.02 || t >= t1) break;
+    // passo cresce com a distância, mas com teto: longe ele não pode ficar maior que a própria nuvem
+    float dt = min(clamp(t * uStep.y, uStep.x, uStep.z + 0.02 * t), fine);
+    vec3 p = ro + rd * (t + jit * dt);
     t += dt;
     vec4 f = fieldAt(p.xz);
-    if (max(max(f.r, f.g), f.a) < 0.004) continue;
+    if (max(max(f.r, f.g), f.a) < 0.004) { t += dt; continue; }      // céu limpo: anda o dobro
     float hn;
     float d = cloudDensity(p, f, true, clamp(log2(t * uPix / 0.086), 0.0, 4.0), hn);
     if (d <= 0.003) continue;
@@ -135,26 +139,51 @@ void main() {
     float dk = f.b * (1.0 - 0.6 * smoothstep(0.1, 0.4, f.a) * smoothstep(0.6, 0.95, hn));   // topo da bigorna pega sol
     vec3 lit = uLit * mix(1.0, 0.36, dk), shade = uShade * mix(1.0, 0.3, dk);
     vec3 S = mix(shade * amb, lit, sun * (0.82 + fwd)) + lit * fwd * sun * 0.6;
-    float fl = 0.0;
-    for (int j = 0; j < ${MAX_FLASH}; j++) { vec4 q = uFlash[j]; fl += q.w * (1.0 - smoothstep(q.z * 0.3, q.z, distance(p.xz, q.xy))); }
-    S += uFlashColor * min(fl, 1.5);
+    if (uFlashOn > 0.5) {
+      float fl = 0.0;
+      for (int j = 0; j < ${MAX_FLASH}; j++) { vec4 q = uFlash[j]; fl += q.w * (1.0 - smoothstep(q.z * 0.3, q.z, distance(p.xz, q.xy))); }
+      S += uFlashColor * min(fl, 1.5);
+    }
     float a = 1.0 - exp(-d * 5.0 * dt);
     col += T * a * S; T *= 1.0 - a;
   }
   gl_FragColor = vec4(min(col, vec3(1.0)), 1.0 - T);     // cor já multiplicada pela cobertura
 }`;
 
-// cola o alvo na tela com média de 4x4 pixels do alvo: anula exatamente o padrão 4x4 do passo deslocado
-const BLIT_FRAG = /* glsl */`
+// Acumulação entre quadros (no tamanho do alvo).
+// Câmera parada: média móvel do quadro cru — o deslocamento dos raios se resolve no tempo e a imagem fica nítida.
+// Câmera andando: o quadro entra já com a média 4x4 (sem chuvisco) e o histórico é buscado onde o ponto estava
+// no quadro anterior, supondo a nuvem num plano horizontal (aproximação: o erro some em poucos quadros).
+const ACC_FRAG = /* glsl */`
 precision highp float;
-uniform sampler2D uTex; uniform vec2 uTexel;
+uniform sampler2D uCur, uHist;
+uniform vec2 uTexel;
+uniform float uAlpha, uMoving, uPlaneY;
+uniform mat4 uProjInv, uCamWorld, uPrevVP;
+uniform vec3 uCam;
 varying vec2 vNdc;
 void main() {
   vec2 uv = vNdc * 0.5 + 0.5;
+  if (uMoving < 0.5) { gl_FragColor = mix(texture2D(uHist, uv), texture2D(uCur, uv), uAlpha); return; }
   vec4 c = vec4(0.0);
-  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) c += texture2D(uTex, uv + uTexel * (vec2(float(i), float(j)) - 1.5));
-  gl_FragColor = c / 16.0;
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) c += texture2D(uCur, uv + uTexel * (vec2(float(i), float(j)) - 1.5));
+  c /= 16.0;
+  vec4 v4 = uProjInv * vec4(vNdc, 1.0, 1.0);
+  vec3 rd = normalize(mat3(uCamWorld) * (v4.xyz / v4.w));
+  float tp = (uPlaneY - uCam.y) / rd.y;
+  if (!(tp > 0.0) || tp > 150.0) tp = 40.0;
+  vec4 pc = uPrevVP * vec4(uCam + rd * tp, 1.0);
+  vec2 puv = pc.xy / pc.w * 0.5 + 0.5;
+  bool ok = pc.w > 0.0 && puv.x > 0.0 && puv.x < 1.0 && puv.y > 0.0 && puv.y < 1.0;
+  gl_FragColor = ok ? mix(texture2D(uHist, puv), c, uAlpha) : c;
 }`;
+
+// cola o histórico na tela (uma leitura, ampliação bilinear)
+const BLIT_FRAG = /* glsl */`
+precision highp float;
+uniform sampler2D uTex;
+varying vec2 vNdc;
+void main() { gl_FragColor = texture2D(uTex, vNdc * 0.5 + 0.5); }`;
 
 const SHADOW_VERT = /* glsl */`
 varying vec2 vXZ;
@@ -224,7 +253,8 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
     uProjInv: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCam: { value: new THREE.Vector3() },
     uLit: { value: new THREE.Vector3(1, 1, 1) }, uShade: { value: new THREE.Vector3(0.62, 0.69, 0.82) },
     uFlashColor: { value: new THREE.Vector3(0.9, 0.93, 1.0) }, uFlash: { value: flashes },
-    uBox: { value: new THREE.Vector4(minX, minZ, maxX, maxZ) }, uPix: { value: 0.002 }, uSteps: { value: 64 },
+    uBox: { value: new THREE.Vector4(minX, minZ, maxX, maxZ) }, uPix: { value: 0.002 }, uSteps: { value: 80 },
+    uStep: { value: new THREE.Vector3(0.35, 0.06, 1.0) }, uFrame: { value: 0 }, uFlashOn: { value: 0 },
   };
 
   // passe do volume, em alvo de resolução reduzida
@@ -233,8 +263,26 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
   const march = new THREE.Mesh(tri(), new THREE.ShaderMaterial({ uniforms, vertexShader: TRI_VERT, fragmentShader: MARCH_FRAG, depthTest: false, depthWrite: false, toneMapped: false }));
   march.frustumCulled = false; marchScene.add(march);
 
+  // acumulação entre quadros: dois alvos que se alternam (lê um, escreve o outro). Meio-float quando dá:
+  // em 8 bits a média móvel de peso pequeno emperra por arredondamento.
+  const floatOk = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
+  const mkHist = () => new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: floatOk ? THREE.HalfFloatType : THREE.UnsignedByteType });
+  const hist = [mkHist(), mkHist()];
+  const MIN_ALPHA = floatOk ? 1 / 32 : 1 / 6, MOVE_ALPHA = 0.35;
+  const accUniforms = {
+    uCur: { value: target.texture }, uHist: { value: hist[0].texture }, uTexel: { value: new THREE.Vector2() },
+    uAlpha: { value: 1 }, uMoving: { value: 1 }, uPlaneY: { value: 6.5 },
+    uProjInv: uniforms.uProjInv, uCamWorld: uniforms.uCamWorld, uCam: uniforms.uCam, uPrevVP: { value: new THREE.Matrix4() },
+  };
+  const accScene = new THREE.Scene();
+  const acc = new THREE.Mesh(tri(), new THREE.ShaderMaterial({ uniforms: accUniforms, vertexShader: TRI_VERT, fragmentShader: ACC_FRAG, depthTest: false, depthWrite: false, toneMapped: false }));
+  acc.frustumCulled = false; accScene.add(acc);
+  const lastWorld = new THREE.Matrix4(), lastProj = new THREE.Matrix4(), curVP = new THREE.Matrix4();
+  let write = 0, still = 0, fresh = true, frameNo = 0;
+  const same = (a, b) => { for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i] - b.elements[i]) > 1e-6) return false; return true; };
+
   // colagem na cena principal
-  const blitUniforms = { uTex: { value: target.texture }, uTexel: { value: new THREE.Vector2() } };
+  const blitUniforms = { uTex: { value: hist[0].texture } };
   const mesh = new THREE.Mesh(tri(), new THREE.ShaderMaterial({
     uniforms: blitUniforms, vertexShader: TRI_VERT, fragmentShader: BLIT_FRAG, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
@@ -281,7 +329,7 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
     shared.uTime.value = now;
     renderer.getDrawingBufferSize(size);
     const w = Math.max(2, Math.round(size.x * scale)), h = Math.max(2, Math.round(size.y * scale));
-    if (target.width !== w || target.height !== h) { target.setSize(w, h); blitUniforms.uTexel.value.set(1 / w, 1 / h); }
+    if (target.width !== w || target.height !== h) { target.setSize(w, h); hist[0].setSize(w, h); hist[1].setSize(w, h); accUniforms.uTexel.value.set(1 / w, 1 / h); fresh = true; }
     camera.updateMatrixWorld();
     uniforms.uProjInv.value.copy(camera.projectionMatrixInverse);
     uniforms.uCamWorld.value.copy(camera.matrixWorld);
@@ -293,10 +341,28 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
     if (y < 4) { mesh.renderOrder = 4; if (cirrus) cirrus.renderOrder = 3; }          // por baixo: cirros, volume, chuva
     else if (y < 10) { mesh.renderOrder = 11; if (cirrus) cirrus.renderOrder = 10; }  // no meio: chuva, cirros, volume
     else { mesh.renderOrder = 9; if (cirrus) cirrus.renderOrder = 10; }               // por cima: chuva, volume, cirros
+    // câmera parada? então o histórico vale como está e a média vai afinando (1/2, 1/3, ... até o piso)
+    const moving = fresh || !same(camera.matrixWorld, lastWorld) || !same(camera.projectionMatrix, lastProj);
+    still = moving ? 0 : still + 1;
+    let alpha = fresh ? 1 : moving ? MOVE_ALPHA : Math.max(1 / (still + 1), MIN_ALPHA);
+    let flashing = false;
+    for (let i = 0; i < MAX_FLASH; i++) if (flashes[i].w > 0) flashing = true;
+    if (flashing) alpha = Math.max(alpha, 0.5);               // clarão dura poucos quadros: não pode ser diluído na média
+    uniforms.uFlashOn.value = flashing ? 1 : 0;
+    uniforms.uFrame.value = frameNo = (frameNo + 1) % 1024;
+    accUniforms.uAlpha.value = alpha; accUniforms.uMoving.value = moving ? 1 : 0;
+    accUniforms.uHist.value = hist[1 - write].texture;
+
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(target);
     renderer.render(marchScene, marchCam);
+    renderer.setRenderTarget(hist[write]);
+    renderer.render(accScene, marchCam);
     renderer.setRenderTarget(prev);
+    blitUniforms.uTex.value = hist[write].texture;
+    write = 1 - write; fresh = false;
+    lastWorld.copy(camera.matrixWorld); lastProj.copy(camera.projectionMatrix);
+    accUniforms.uPrevVP.value.copy(curVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   }
 
   return {
@@ -309,7 +375,12 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
       uniforms.uLit.value.fromArray(sky.cloudLit); uniforms.uShade.value.fromArray(sky.cloudShade);
       shadowUniforms.uStrength.value = 0.3 - 0.12 * sky.night;
     },
-    // alto: metade da resolução e 64 passos; baixo: um terço e 32 passos
-    setQuality(q) { const k = clamp((q.slots - 0.4) / 0.6, 0, 1); scale = 0.33 + 0.17 * k; uniforms.uSteps.value = Math.round(32 + 32 * k); shadow.visible = q.shadows !== false; },
+    // alto: metade da resolução, até 80 passos com teto de 1,0; baixo: um terço, até 48 passos, mais largos
+    setQuality(q) {
+      const k = clamp((q.slots - 0.4) / 0.6, 0, 1);
+      scale = 0.33 + 0.17 * k; uniforms.uSteps.value = Math.round(48 + 32 * k);
+      uniforms.uStep.value.set(0.5 - 0.15 * k, 0.1 - 0.04 * k, 2.2 - 1.2 * k);
+      shadow.visible = q.shadows !== false;
+    },
   };
 }
