@@ -50,12 +50,12 @@ test('Final#2: não oscila — depois de descer de um nível, não volta a ele l
 });
 test('travada: quadros lentos não mudam o nível', () => {
   const q = createQuality({}); q.lock(0);
-  assert.equal(run(q, 40, 5), null); assert.equal(q.level, 0); assert.equal(q.locked, true);
+  assert.equal(run(q, 25, 5), null); assert.equal(q.level, 0); assert.equal(q.locked, true);
 });
 test('travar muda o nível na hora', () => { const q = createQuality({}); q.lock(2); assert.equal(q.level, 2); });
 test('destravar volta ao automático a partir do nível travado, com a janela zerada', () => {
-  const q = createQuality({}); q.lock(1); run(q, 40, 5);
+  const q = createQuality({}); q.lock(1); run(q, 25, 5);
   q.lock(null); assert.equal(q.locked, false); assert.equal(q.level, 1);
-  assert.equal(run(q, 40, 1.5, 5000), null);                 // os 5 s ruins de antes não contam
-  assert.equal(run(q, 40, 0.7, 6500), 2);
+  assert.equal(run(q, 25, 1.5, 5000), null);                 // os 5 s ruins de antes não contam
+  assert.equal(run(q, 25, 0.7, 6500), 2);
 });
