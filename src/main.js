@@ -10,7 +10,7 @@ import { makeSlots } from './render/slots.js';
 import { makeGrid } from './data/grid.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
-import { createDebug } from './ui/debug.js';
+import { createDebugMenu } from './ui/debug-menu.js';
 import { parseConfig } from './ui/config.js';
 import { createQuality, LEVELS } from './render/quality.js';
 import { createClock } from './ui/clock.js';
@@ -136,7 +136,7 @@ async function run(geo, grid, view) {
 
   const perf = { fps: 60, frameMs: 16.7 };
   const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: stage.clouds.visibleCount(), cloudInfo: stage.clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
-  const debug = cfg.debug ? createDebug(document.getElementById('debug'), { stats }) : null;
+  const menu = createDebugMenu(document.getElementById('debug'), { button: document.getElementById('debug-toggle'), config: cfg, stage, quality, applyQuality, stats });
   stage.setDots(cfg.grade);
 
   function refresh(now) {
@@ -170,7 +170,7 @@ async function run(geo, grid, view) {
     lift.frame(dt);
     stage.clouds.frame(now, view.camera);
     rain.frame(now);
-    debug?.tick(dt);
+    menu.tick(dt);
     if (first) {                                             // primeiro quadro útil: mapa + nuvens já desenhados
       first = false;
       performance.mark('first-frame');

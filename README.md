@@ -21,7 +21,17 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 | `/` | previsão real (Open-Meteo), com cache de 1 h no navegador |
 | `/?demo=1` | campo sintético determinístico, sem rede |
 | `/?fixture=1` | carrega `assets/fixture.json` pelo mesmo parsing da API |
-| `/?debug=1` | painel (fps, tempo de quadro, puffs, gotas, draw calls, qualidade) e pontos da grade coloridos pelo dado bruto: cinza = seco, azul = chuva, amarelo = trovoada |
+| `/?debug=1` | abre com o menu de debug aberto e os pontos da grade ligados (coloridos pelo dado bruto: cinza = seco, azul = chuva, amarelo = trovoada) |
+
+**Menu de debug:** o botão ⚙ no canto superior direito abre um menu com fps, tempo de quadro, draw calls e qualidade, e deixa trocar na hora, sem perder câmera nem horário: nuvens (sólidas, volume, sprite), relevo e exagero, pontos da grade e qualidade (automática ou travada). Trocar a fonte de dados (ao vivo, demo, fixture) recarrega a página. Cada ajuste reescreve a URL, então o link da barra de endereço (ou o botão "copiar link") reproduz o que está na tela.
+
+| Parâmetro | Valores | Padrão |
+|---|---|---|
+| `nuvens` | `volume`, `sprite` | sólidas |
+| `relevo` | `1` | desligado |
+| `exagero` | 1 a 40 (só com relevo) | 12 |
+| `grade` | `1`, `0` | igual a `debug` |
+| `qualidade` | `alto`, `medio`, `baixo` | automática |
 
 Teclado: espaço = play/pause, ← → = ±1 h, Home = agora, Esc = fecha o município, WASD = anda com a câmera (Shift corre).
 
@@ -29,11 +39,11 @@ Busca no canto superior esquerdo (ou tecla `/`): digite o nome do município, es
 
 Clique (ou toque) num município: ele sobe do mapa com contorno dourado e abre um painel com área, código IBGE, o tempo no instante da linha do tempo e um meteograma da faixa visível (nuvem pendurada no topo, chuva caindo dela, trovoada em amarelo). Clicar no meteograma move a linha do tempo. Clique fora do estado ou Esc fecha.
 
-As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde há trovoada; os cirros são sprites translúcidos. `?nuvens=sprite` volta ao visual antigo, todo em sprite.
+As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde há trovoada; os cirros são sprites translúcidos. `?nuvens=sprite` volta ao visual antigo, todo em sprite, e `?nuvens=volume` usa o protótipo volumétrico.
 
 Dá pra descer a câmera até quase rente ao chão e chegar bem perto: de lado se vê nuvem em cima, chuva no meio e solo embaixo; perto da câmera a nuvem vira neblina, então dá pra atravessá-la.
 
-**Spike do relevo:** `?relevo=1` troca o topo plano por terreno de verdade (altitude da AWS Terrain Tiles, exagerada 12× para aparecer na escala da maquete). `&exagero=20` deixa a serra mais dramática. Combina com os outros parâmetros (`?relevo=1&fixture=1`).
+**Relevo:** `?relevo=1` (ou o menu de debug) troca o topo plano por terreno de verdade (altitude da AWS Terrain Tiles, exagerada 12× para aparecer na escala da maquete). `&exagero=20` deixa a serra mais dramática. Combina com os outros parâmetros (`?relevo=1&fixture=1`).
 
 Parâmetros só para os roteiros de verificação: `t=<horas após agora>`, `cam=top|se|sw|ne|nw`, `dist=`, `look=lon,lat`.
 
@@ -55,9 +65,14 @@ node tools/gate-ui.cjs
 node tools/gate-final.cjs
 ```
 
-- `npm test`: 163 testes dos módulos puros (`node --test`), incluindo a propriedade A1 com 20.000 amostras.
+```bash
+node tools/gate-debug.cjs
+```
+
+- `npm test`: 212 testes dos módulos puros (`node --test`; precisa de `npm install` antes, um dos testes importa o `three`), incluindo a propriedade A1 com 20.000 amostras.
 - `gate-rain`: visto de cima, em 5 horários, a base e o topo de todo traço de chuva desenhado ficam em célula cujo dado bruto é molhado.
 - `gate-ui`: play, scrub, velocidade, teclado, tooltip, selo, celular.
+- `gate-debug`: o menu troca nuvens, relevo, exagero, grade e qualidade no lugar, mantém câmera, horário e município, não vaza memória, reflete e reescreve a URL, e não cobre busca, painel nem linha do tempo.
 - `gate-final`: caminho ao vivo + cache com a API interceptada (11 requisições na primeira carga, zero na segunda, primeiro quadro, fallbacks, nenhum host externo além da API).
 
 Os roteiros usam o Chromium/Playwright já instalados no ambiente e rodam sem rede.

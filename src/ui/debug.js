@@ -1,21 +1,5 @@
 import * as THREE from 'three';
 import { toScene } from '../geo/projection.js';
-// Painel de debug (?debug=1): fps, tempo de quadro, puffs, gotas, draw calls, nível de qualidade.
-export function createDebug(el, { stats }) {
-  el.hidden = false;
-  let acc = 0;
-  return {
-    el,
-    tick(dt) {
-      acc += dt;
-      if (acc < 0.25) return;
-      acc = 0;
-      const s = stats();
-      el.textContent = `${s.fps.toFixed(0)} fps · ${s.frameMs.toFixed(1)} ms\n${s.cloudInfo ?? `puffs ${s.puffs}`} · gotas ${s.drops}\ndraw calls ${s.drawCalls} · qualidade ${s.quality}`;
-    },
-  };
-}
-
 // Pontos da grade no chão, coloridos pelo dado BRUTO: cinza = seco, azul = chuva, amarelo = trovoada.
 
 const DRY = [0.47, 0.47, 0.47], WET = [0.23, 0.51, 0.96], STORM = [0.98, 0.8, 0.08];
