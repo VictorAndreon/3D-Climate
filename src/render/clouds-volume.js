@@ -11,6 +11,8 @@ import { makeCloudNoise } from './cloud-noise.js';
 const MAX_FLASH = 8, FIELD_N = 64;
 const MIN_COVER = 15, RAIN_MIN_LOW = 60;
 const Y0 = 3.9, Y1 = 14.5;                       // fatia vertical onde pode haver nuvem
+const TOWER_Y0 = 4.0, TOWER_H = 9.6;             // cumulonimbus: da base da camada baixa até 13,6 (cabe abaixo de Y1)
+const TOWER_GAIN = 4;                            // a máscara borrada de uma célula isolada tem pico ~0,23: o ganho leva o miolo a ~1
 
 // Densidade: compartilhada entre o volume e a sombra no mapa.
 const DENSITY = /* glsl */`
@@ -19,7 +21,12 @@ uniform sampler3D uNoise;
 uniform sampler2D uField;
 uniform vec4 uB;          // minX, minZ, 1/largura, 1/profundidade
 uniform float uTime;
+const float TOWER_Y0 = ${TOWER_Y0.toFixed(1)}, TOWER_H = ${TOWER_H.toFixed(1)};
 vec4 fieldAt(vec2 xz) { return textureLod(uField, (xz - uB.xy) * uB.zw, 0.0); }   // r baixa, g média, b escuro, a torre
+// bolhas grandes + torres menores por cima (o que dá o topo desigual)
+float shapeNoise(vec3 p, vec3 drift) {
+  return 0.5 + 1.3 * (mix(textureLod(uNoise, (p + drift) / 26.0, 0.0).r, textureLod(uNoise, (p + drift * 1.3 + 5.1) / 10.0, 0.0).r, 0.35) - 0.5);
+}
 float erode(float b, vec3 q, float lod) {
   float e = textureLod(uNoise, q, lod).g * 0.55 * (1.0 - 0.5 * b);
   return clamp((b - e) / (1.0 - e), 0.0, 1.0);
@@ -30,18 +37,34 @@ float cloudDensity(vec3 p, vec4 f, bool fine, float lod, out float hn) {
   float d = 0.0;
   vec3 drift = vec3(uTime * 0.05, 0.0, uTime * 0.02);
   vec2 v = textureLod(uNoise, vec3(p.xz / 61.0, 0.31), 0.0).rg;      // variação regional: cada nuvem com sua base e sua altura
+  float s = -1.0;                                                     // ruído de forma, lido uma vez só
   if (f.r > 0.004) {                                                  // camada baixa: cúmulos
     float base = 4.0 + 0.9 * v.y * (1.0 - smoothstep(0.0, 0.4, f.b)); // onde chove a base desce até o topo da chuva
-    float H = (1.3 + 3.4 * f.r) * (0.4 + 1.2 * v.x) + 1.3 * f.b + 6.5 * f.a;
+    float H = (1.3 + 3.4 * f.r) * (0.4 + 1.2 * v.x) + 1.3 * f.b;
     float h = (p.y - base) / H;
     if (h > 0.0 && h < 1.0) {
-      // bolhas grandes + torres menores por cima (o que dá o topo desigual)
-      float s = 0.5 + 1.3 * (mix(textureLod(uNoise, (p + drift) / 26.0, 0.0).r, textureLod(uNoise, (p + drift * 1.3 + 5.1) / 10.0, 0.0).r, 0.35) - 0.5);
+      s = shapeNoise(p, drift);
       // o limiar sobe com a altura: a nuvem afina para cima e cada bolha chega a uma altura diferente
       float need = 1.0 - min(1.0, 1.12 * pow(f.r, 0.75));
-      need += (1.0 - need) * pow(h, 1.4) * (1.0 - 0.45 * f.a) + 0.3 * (1.0 - smoothstep(0.0, 0.1, h));
+      need += (1.0 - need) * pow(h, 1.4) + 0.3 * (1.0 - smoothstep(0.0, 0.1, h));
       float b = clamp((s - need) / 0.13, 0.0, 1.0);
       if (b > 0.0) { if (fine) b = erode(b, (p + drift * 1.6) / 5.5, lod); d += b; hn = h; }
+    }
+  }
+  if (f.a > 0.02) {                                                   // trovoada: cumulonimbus (tronco + bigorna)
+    float ht = (p.y - TOWER_Y0) / TOWER_H;
+    if (ht > 0.0 && ht < 1.0) {
+      if (s < -0.5) s = shapeNoise(p, drift);
+      float anvil = smoothstep(0.7, 0.86, ht);
+      // f.a é a máscara de trovoada borrada: 1 no miolo, caindo para fora. O tronco só existe no miolo
+      // (e afina com a altura); a bigorna aceita bem menos e por isso abre para além do tronco.
+      float reach = mix(mix(0.5, 0.78, smoothstep(0.0, 0.45, ht)), 0.1, anvil);
+      // o ruído entorta o contorno (senão a lateral do tronco é uma parede lisa, reta de cima a baixo)
+      float e = smoothstep(reach, reach + 0.2, f.a + 0.4 * (s - 0.5) * (1.0 - 0.5 * anvil));
+      float sc = clamp(s, 0.0, 1.0);
+      e *= smoothstep(0.0, 0.05, ht) * (1.0 - smoothstep(0.78 + 0.12 * sc, 0.88 + 0.12 * sc, ht));   // topo achatado, mas com relevo
+      float b = clamp((e * (0.55 + 0.9 * mix(s, 0.5, 0.3 * anvil)) - 0.5) / 0.13, 0.0, 1.0);   // tronco bolhoso, bigorna mais lisa
+      if (b > 0.0) { if (fine) b = erode(b, (p + drift * 1.6) / 5.5, lod) ; if (b > d) hn = ht; d = max(d, b); }
     }
   }
   if (f.g > 0.004) {                                                  // camada média: altocúmulos, finos e miúdos
@@ -100,7 +123,7 @@ void main() {
     vec3 p = ro + rd * (t + 0.5 * dt);
     t += dt;
     vec4 f = fieldAt(p.xz);
-    if (max(f.r, f.g) < 0.004) continue;
+    if (max(max(f.r, f.g), f.a) < 0.004) continue;
     float hn;
     float d = cloudDensity(p, f, true, clamp(log2(t * uPix / 0.086), 0.0, 4.0), hn);
     if (d <= 0.003) continue;
@@ -109,7 +132,7 @@ void main() {
     float d1 = cloudDensity(p + uSunDir * 0.5, f, false, 0.0, h1), d2 = cloudDensity(p + uSunDir * 1.5, f, false, 0.0, h2);
     float sun = exp(-(0.3 * d + 1.3 * d1 + 2.2 * d2));
     float amb = mix(0.42, 1.0, hn);
-    float dk = f.b;
+    float dk = f.b * (1.0 - 0.6 * smoothstep(0.1, 0.4, f.a) * smoothstep(0.6, 0.95, hn));   // topo da bigorna pega sol
     vec3 lit = uLit * mix(1.0, 0.36, dk), shade = uShade * mix(1.0, 0.3, dk);
     vec3 S = mix(shade * amb, lit, sun * (0.82 + fwd)) + lit * fwd * sun * 0.6;
     float fl = 0.0;
@@ -148,6 +171,8 @@ void main() {
   a += cloudDensity(vec3(q.x, 4.9, q.y), f, false, 0.0, hn) * (1.0 + f.b);
   q = vXZ + off * 8.0; f = fieldAt(q);
   a += 0.6 * cloudDensity(vec3(q.x, 8.1, q.y), f, false, 0.0, hn);
+  q = vXZ + off * 12.0; f = fieldAt(q);
+  if (f.a > 0.02) a += 0.7 * cloudDensity(vec3(q.x, ${(TOWER_Y0 + 0.88 * TOWER_H).toFixed(1)}, q.y), f, false, 0.0, hn);   // bigorna
   a = uStrength * min(a, 1.6);
   if (a < 0.004) discard;
   gl_FragColor = vec4(0.0, 0.01, 0.04, a);
@@ -165,7 +190,21 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
 
   // campo do tempo assado em textura
   const { minX, maxX, minZ, maxZ } = bounds, N = FIELD_N;
-  const fdata = new Uint8Array(N * N * 4), tower = new Float32Array(N * N), tmp = new Float32Array(N * N);
+  const fdata = new Uint8Array(N * N * 4), tower = new Float32Array(N * N), darkF = new Float32Array(N * N), tmp = new Float32Array(N * N);
+  // média 3x3 repetida: tira o degrau da célula da grade (senão o escuro e a torre viram quadrados vistos de cima)
+  function blur(a, passes) {
+    for (let pass = 0; pass < passes; pass++) {
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        let s = 0, n = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          const x = i + di, y = j + dj;
+          if (x >= 0 && x < N && y >= 0 && y < N) { s += a[y * N + x]; n++; }
+        }
+        tmp[j * N + i] = s / n;
+      }
+      a.set(tmp);
+    }
+  }
   const fieldTex = new THREE.DataTexture(fdata, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
   fieldTex.minFilter = fieldTex.magFilter = THREE.LinearFilter; fieldTex.needsUpdate = true;
   const flon = new Float32Array(N * N), flat = new Float32Array(N * N), inside = new Uint8Array(N * N);
@@ -227,20 +266,14 @@ export function createVolumeClouds({ renderer, grid, bounds }) {
         dark = storm ? 1 : r > 0 ? 0.45 + 0.55 * clamp(r / 8, 0, 1) : 0;   // escuro avaliado onde a nuvem está
         tw = storm ? 1 : 0;
       }
-      fdata[q * 4] = lowC * 255; fdata[q * 4 + 1] = midC * 255; fdata[q * 4 + 2] = dark * 255; tower[q] = tw;
+      fdata[q * 4] = lowC * 255; fdata[q * 4 + 1] = midC * 255; darkF[q] = dark; tower[q] = tw;
     }
-    for (let pass = 0; pass < 2; pass++) {                     // torre com borda suave (senão vira um paredão quadrado)
-      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-        let s = 0, n = 0;
-        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-          const a = i + di, b = j + dj;
-          if (a >= 0 && a < N && b >= 0 && b < N) { s += tower[b * N + a]; n++; }
-        }
-        tmp[j * N + i] = s / n;
-      }
-      tower.set(tmp);
+    blur(darkF, 2); blur(tower, 3);
+    for (let q = 0; q < N * N; q++) {
+      // a torre some antes da beira da textura (que é a parede da caixa marchada): sem isso a bigorna sai cortada reta
+      const i = q % N, j = (q - i) / N, edge = Math.min(1, Math.min(i, N - 1 - i, j, N - 1 - j) / 3);
+      fdata[q * 4 + 2] = darkF[q] * 255; fdata[q * 4 + 3] = Math.min(1, tower[q] * TOWER_GAIN) * edge * 255;
     }
-    for (let q = 0; q < N * N; q++) fdata[q * 4 + 3] = tower[q] * 255;
     fieldTex.needsUpdate = true;
   }
 
