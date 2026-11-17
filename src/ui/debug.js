@@ -15,7 +15,7 @@ export function createGridDots(grid, proj) {
     update(field, t) {
       for (let p = 0; p < grid.nP; p++) {
         const c = field.cellInfo(grid.lons[p], grid.lats[p], t);
-        col.set(c.code >= 95 && c.code <= 99 ? STORM : c.precip >= 0.1 ? WET : DRY, p * 3);
+        col.set(c && c.code >= 95 && c.code <= 99 ? STORM : c && c.precip >= 0.1 ? WET : DRY, p * 3);   // nó fora do dado (região trocada antes do dado novo): cinza
       }
       colAttr.needsUpdate = true;
     },

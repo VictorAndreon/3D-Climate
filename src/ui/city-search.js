@@ -26,8 +26,9 @@ export function searchPlaces(items, query, limit = 8) {
   return out.slice(0, limit).map(({ rank, ...item }) => item);
 }
 
-/** items: veja searchPlaces; onPick(item); onFirstFocus: chamado uma vez no primeiro foco (busca nacional baixa a lista aí). */
-export function createCitySearch(el, { items, onPick, placeholder = 'Buscar município…', onFirstFocus = null }) {
+/** items: veja searchPlaces; onPick(item); onFirstFocus: chamado uma vez no primeiro foco (busca nacional baixa a lista aí).
+ *  signal: ao abortar, os ouvintes (inclusive o "/" na janela) saem; o conteúdo de `el` fica para quem recria. */
+export function createCitySearch(el, { items, onPick, placeholder = 'Buscar município…', onFirstFocus = null, signal }) {
   el.innerHTML = `
     <input type="search" class="cs-input" autocomplete="off" autocapitalize="off" spellcheck="false"
       role="combobox" aria-label="Buscar" aria-autocomplete="list" aria-expanded="false" aria-controls="cs-list">
@@ -57,9 +58,9 @@ export function createCitySearch(el, { items, onPick, placeholder = 'Buscar muni
   }
   function search() { results = searchPlaces(items, input.value); active = results.length ? 0 : -1; render(); }
 
-  input.addEventListener('input', search);
+  input.addEventListener('input', search, { signal });
   let focused = false;
-  input.addEventListener('focus', () => { input.select(); if (!focused) { focused = true; onFirstFocus?.(); } });
+  input.addEventListener('focus', () => { input.select(); if (!focused) { focused = true; onFirstFocus?.(); } }, { signal });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!results.length) return;
@@ -72,19 +73,19 @@ export function createCitySearch(el, { items, onPick, placeholder = 'Buscar muni
       // primeiro Esc fecha a lista; o município aberto só fecha no seguinte
       if (results.length) { e.stopPropagation(); close(); } else input.blur();
     }
-  });
+  }, { signal });
   // pointerdown (e não click): escolhe antes de o campo perder o foco e a lista fechar
   list.addEventListener('pointerdown', (e) => {
     const li = e.target.closest('li');
     if (li) { e.preventDefault(); pick(results[[...list.children].indexOf(li)]); }
-  });
-  input.addEventListener('blur', () => close());
+  }, { signal });
+  input.addEventListener('blur', () => close(), { signal });
   // "/" leva o foco para a busca
   window.addEventListener('keydown', (e) => {
     const tag = e.target?.tagName;
     if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     e.preventDefault(); input.focus();
-  });
+  }, { signal });
   el.hidden = false;
 
   return {

@@ -3,10 +3,17 @@ const SPEEDS = [0.5, 1, 4];
 export const HOURS_PER_SEC = 1 / 3;   // 1 h/s (o plano original) ficava rápido demais para acompanhar as nuvens
 const MAX_DT = 0.1;       // aba voltando depois de horas não faz a linha do tempo pular
 
-export function createClock({ tNow, tEnd72, tEndAll }) {
+/** from = { t, playing, speed, range } (opcional): estado inicial, para a região nova continuar de onde a anterior estava. */
+export function createClock({ tNow, tEnd72, tEndAll, from }) {
   let t = tNow, playing = false, speed = 1, range = '72h';
+  if (from) {
+    if (from.range === '72h' || from.range === '7d') range = from.range;
+    if (SPEEDS.includes(from.speed)) speed = from.speed;
+    playing = !!from.playing;
+  }
   const listeners = [];
   const tMax = () => (range === '72h' ? tEnd72 : tEndAll);
+  if (from && Number.isFinite(from.t)) t = Math.min(Math.max(from.t, tNow), tMax());
   const emit = () => { for (const fn of listeners) fn(api); };
   const set = (v) => { if (!Number.isFinite(v)) return; t = Math.min(Math.max(v, tNow), tMax()); emit(); };
   const api = {

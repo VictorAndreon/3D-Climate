@@ -10,7 +10,8 @@ const num = (v, d = 1) => v.toFixed(d).replace('.', ',');
 const intBR = new Intl.NumberFormat('pt-BR');
 const rainLen = (mm) => RAIN_H * Math.min(1, Math.sqrt(mm / 12));      // raiz: garoa ainda aparece, 12 mm/h enche
 
-export function createCityPanel(el, { clock, field, fmt, onClose }) {
+/** signal: ao abortar, os ouvintes saem; o conteúdo de `el` fica para quem recria. */
+export function createCityPanel(el, { clock, field, fmt, onClose, signal }) {
   const { fmtLabel, fmtDay, localHourOf } = fmt;
   el.innerHTML = `
     <header class="cp-head">
@@ -39,8 +40,8 @@ export function createCityPanel(el, { clock, field, fmt, onClose }) {
   const svg = $('.cp-svg');
   let city = null, pt = null, builtKey = '';
 
-  $('.cp-close').addEventListener('click', () => onClose());
-  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') onClose(); });
+  $('.cp-close').addEventListener('click', () => onClose(), { signal });
+  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') onClose(); }, { signal });
 
   const xOf = (t) => ((t - clock.tMin) / (clock.tMax - clock.tMin || 1)) * W;
   // meteograma: depende da faixa (72 h / 7 dias) e do município, não do instante
@@ -109,12 +110,12 @@ export function createCityPanel(el, { clock, field, fmt, onClose }) {
   // clicar/arrastar no meteograma move a linha do tempo
   let scrubbing = false;
   const seek = (e) => { const r = svg.getBoundingClientRect(); clock.seek(clock.tMin + ((e.clientX - r.left) / r.width) * (clock.tMax - clock.tMin)); };
-  svg.addEventListener('pointerdown', (e) => { scrubbing = true; clock.pause(); svg.setPointerCapture(e.pointerId); seek(e); });
-  svg.addEventListener('pointermove', (e) => { if (scrubbing) seek(e); });
-  svg.addEventListener('pointerup', () => { scrubbing = false; });
-  svg.addEventListener('pointercancel', () => { scrubbing = false; });
+  svg.addEventListener('pointerdown', (e) => { scrubbing = true; clock.pause(); svg.setPointerCapture(e.pointerId); seek(e); }, { signal });
+  svg.addEventListener('pointermove', (e) => { if (scrubbing) seek(e); }, { signal });
+  svg.addEventListener('pointerup', () => { scrubbing = false; }, { signal });
+  svg.addEventListener('pointercancel', () => { scrubbing = false; }, { signal });
 
-  clock.onChange(update);
+  clock.onChange(() => { if (!signal?.aborted) update(); });
 
   return {
     /** m: item do índice; centro: [lon, lat] do centroide. */

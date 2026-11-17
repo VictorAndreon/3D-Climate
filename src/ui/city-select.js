@@ -4,7 +4,7 @@ import { createMunicipioIndex } from '../data/city.js';
 
 const TAP_PX = 8;
 
-export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, munUrl, onSelect = () => {} }) {
+export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, munUrl, onSelect = () => {}, signal }) {
   let index = null, loading = null, current = null;
   const centers = new Map(municipios.map(([name, lon, lat]) => [name, [lon, lat]]));
   const load = () => (loading ??= fetch(munUrl).then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
@@ -51,14 +51,14 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
   }
 
   let down = null;
-  canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; }, { signal });
   canvas.addEventListener('pointerup', (e) => {
     const tap = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= TAP_PX;
     down = null;
     if (tap) selectAt(e.clientX, e.clientY).catch((err) => console.warn('município indisponível', err));
-  });
-  canvas.addEventListener('pointercancel', () => { down = null; });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  }, { signal });
+  canvas.addEventListener('pointercancel', () => { down = null; }, { signal });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); }, { signal });
 
   // adianta o download quando o navegador estiver ocioso, para o primeiro clique ser imediato
   (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500)))(() => load().catch(() => { loading = null; }));

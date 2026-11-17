@@ -3,10 +3,7 @@ import { createScene } from './render/scene.js';
 import { loadRelief } from './data/relief.js';
 import { startCloudNoise } from './render/clouds-volume.js';
 import { createStage } from './render/stage.js';
-import { createRain } from './render/rain.js';
-import { createLightning } from './render/lightning.js';
 import { skyState, applySky } from './render/light.js';
-import { makeSlots } from './render/slots.js';
 import { createWeatherField } from './data/weather-field.js';
 import { syntheticSeries } from './data/synthetic.js';
 import { createDebugMenu } from './ui/debug-menu.js';
@@ -30,20 +27,9 @@ import { loadIndex, loadRegion } from './data/region.js';
 import { makeFormat } from './ui/format.js';
 
 const params = new URLSearchParams(location.search);
-const SLOT_RAIN = 1350;                                   // 1.350 colunas x 10 traços + 1.350 respingos = 14.850 instâncias de chuva
 let noiseP = null;                                        // o ruído 3D do volume é gerado num worker, uma vez só
 const loadNoise = () => (noiseP ??= startCloudNoise());
 const QUALITY_LEVEL = { alto: 0, medio: 1, baixo: 2 };
-
-function sceneBounds(grid, proj) {
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (let p = 0; p < grid.nP; p++) {
-    const s = proj.toScene(grid.lons[p], grid.lats[p]);
-    minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minZ = Math.min(minZ, s.z); maxZ = Math.max(maxZ, s.z);
-  }
-  const cell = proj.cell(grid.step);
-  return { minX: minX - cell.x, maxX: maxX + cell.x, minZ: minZ - cell.z, maxZ: maxZ + cell.z };
-}
 
 function fatal(msg) {
   document.getElementById('scene').hidden = true;
@@ -74,13 +60,9 @@ function createView(canvas, { proj, bounds }) {
 async function run(cfg, region, view, index) {
   const { geo, grid, proj } = region;
   const fmt = makeFormat(region.tz);
-  // slots só onde há dado: dentro da célula de algum nó da grade
-  const bounds = sceneBounds(grid, proj);
-  const accept = (x, z) => { const ll = proj.toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
-  const slots = (count, seed) => makeSlots({ ...bounds, count, seed, accept });
   let onSwap = () => {};                                     // preenchido quando céu, relógio e seleção existirem
   const stage = createStage({
-    view, geo, grid, bounds, proj, slots, loadNoise, hasRelief: region.hasRelief, loadRelief: () => loadRelief('./assets/relief.bin.gz'),
+    view, region, loadNoise, loadRelief: () => loadRelief('./assets/relief.bin.gz'),
     onSwap: (what) => onSwap(what),
   });
   await stage.setRelief(cfg.relevo, cfg.exagero).catch((e) => console.warn('relevo indisponível, seguindo com o mapa plano', e));
@@ -163,34 +145,31 @@ async function run(cfg, region, view, index) {
   createRegionNav(document.getElementById('region-back'), { region });
 
   await stage.setClouds(cfg.nuvens);
-  const rain = createRain({ slots: slots(SLOT_RAIN, 201), proj, step: grid.step });
-  const lightning = createLightning({ grid, proj });
-  view.scene.add(rain.mesh, lightning.object3d);
 
   // qualidade adaptativa: desce com quadro lento, sobe só depois de 10 s folgados
   const quality = createQuality({});
   if (cfg.qualidade !== 'auto') quality.lock(QUALITY_LEVEL[cfg.qualidade]);
-  function applyQuality(level) { const q = LEVELS[level]; stage.clouds.setQuality(q); rain.setQuality(q); view.setPixelRatio(q.pixelRatio); }
+  function applyQuality(level) { const q = LEVELS[level]; stage.clouds.setQuality(q); stage.rain.setQuality(q); view.setPixelRatio(q.pixelRatio); }
   applyQuality(quality.level);
 
   const perf = { fps: 60, frameMs: 16.7 };
-  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: stage.clouds.visibleCount(), cloudInfo: stage.clouds.info?.() ?? null, drops: rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
+  const stats = () => ({ fps: perf.fps, frameMs: perf.frameMs, puffs: stage.clouds.visibleCount(), cloudInfo: stage.clouds.info?.() ?? null, drops: stage.rain.dropCount(), drawCalls: view.drawCalls(), quality: LEVELS[quality.level].name });
   const menu = createDebugMenu(document.getElementById('debug'), { button: document.getElementById('debug-toggle'), config: cfg, stage, quality, applyQuality, stats });
   stage.setDots(cfg.grade);
 
   function refresh(now) {
     const sky = skyState(fmt.localHourOf(field.times[0] + clock.t * 3600));
-    applySky(sky, { renderer: view.renderer, lights, ground: stage.map.userData.ground, clouds: stage.clouds, rain });
+    applySky(sky, { renderer: view.renderer, lights, ground: stage.map.userData.ground, clouds: stage.clouds, rain: stage.rain });
     stage.clouds.update(field, clock.t, now);
-    rain.update(field, clock.t);
-    lightning.update(field, clock.t);
+    stage.rain.update(field, clock.t);
+    stage.lightning.update(field, clock.t);
     stage.dots?.update(field, clock.t);
   }
   // troca no lugar (menu de debug): o que entrou recebe céu, qualidade e dado antes do próximo quadro
   let lastNow = 0;
   onSwap = (what) => {
-    if (what === 'clouds') applyQuality(quality.level);
-    if (what === 'map') citySelect?.relift();
+    if (what === 'clouds' || what === 'region') applyQuality(quality.level);
+    if (what === 'map' || what === 'region') citySelect?.relift();
     refresh(lastNow);
   };
 
@@ -205,10 +184,10 @@ async function run(cfg, region, view, index) {
     clock.tick(dt);
     acc += dt;
     if (acc >= 0.1) { acc = 0; refresh(now); }
-    stage.clouds.setFlashes(lightning.frame(now, dt, clock.playing));
+    stage.clouds.setFlashes(stage.lightning.frame(now, dt, clock.playing));
     lift.frame(dt);
     stage.clouds.frame(now, view.camera);
-    rain.frame(now);
+    stage.rain.frame(now);
     menu.tick(dt);
     if (first) {                                             // primeiro quadro útil: mapa + nuvens já desenhados
       first = false;
@@ -219,7 +198,7 @@ async function run(cfg, region, view, index) {
       requestAnimationFrame(() => { document.documentElement.dataset.ready = '1'; });
     }
   });
-  if (cfg.debug) window.__rs = { region, stage, view, memory: () => ({ geometries: view.renderer.info.memory.geometries, textures: view.renderer.info.memory.textures }), citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => rain.activeColumns(), rainStrokes: () => rain.activeStrokes(field, clock.t), stormCount: () => lightning.stormCount(), boltVisible: () => lightning.object3d.visible };
+  if (cfg.debug) window.__rs = { region, stage, view, memory: () => ({ geometries: view.renderer.info.memory.geometries, textures: view.renderer.info.memory.textures }), citySelect, field, grid, stats, clock, status: data.status, tNow, rainColumns: () => stage.rain.activeColumns(), rainStrokes: () => stage.rain.activeStrokes(field, clock.t), stormCount: () => stage.lightning.stormCount(), boltVisible: () => stage.lightning.object3d.visible, loadRegion: (id) => loadRegion(index.find((r) => r.id === id)) };
   // aba voltou e o dado ao vivo passou de 1 h: recarrega (o cache decide se busca de novo);
   // e também a cada 5 min com a aba visível (mapa aberto num segundo monitor não fica com dado velho e selo de atual)
   const loadedAt = Date.now() / 1000;

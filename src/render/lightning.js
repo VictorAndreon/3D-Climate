@@ -2,6 +2,7 @@
 // Efeito: clarão em dois pulsos nos puffs da célula + traço em zigue-zague da nuvem ao chão. Sem luz dinâmica.
 import * as THREE from 'three';
 import { mulberry32 } from '../util/rng.js';
+import { disposeObject } from './dispose.js';
 
 const MAX_BOLTS = 8, SEGS = 12, TOP = 4.2;
 const DURATION = 0.19;
@@ -78,5 +79,5 @@ export function createLightning({ grid, proj }) {
     posAttr.needsUpdate = true;
     return flashes;
   }
-  return { object3d, update, frame, stormCount: () => { let n = 0; for (let p = 0; p < grid.nP; p++) if (next[p] >= 0) n++; return n; } };
+  return { object3d, update, frame, dispose: () => disposeObject(object3d), stormCount: () => { let n = 0; for (let p = 0; p < grid.nP; p++) if (next[p] >= 0) n++; return n; } };
 }

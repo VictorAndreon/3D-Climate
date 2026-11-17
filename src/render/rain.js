@@ -2,6 +2,7 @@
 // desenhado se rain() > 0 na posição do próprio traço (garantia A1 no nível do traço).
 // A queda é em laço no vertex shader; a CPU só reescreve os buffers a ~10 Hz.
 import * as THREE from 'three';
+import { disposeObject } from './dispose.js';
 
 export const MAX_PER_COLUMN = 10;
 const TOP = 4.0;                 // altura da base das nuvens baixas
@@ -148,5 +149,7 @@ export function createRain({ slots, proj, step, quality = { slots: 1 } }) {
     /** Reavalia e devolve a posição de cada traço desenhado (gancho de teste). */
     activeStrokes(field, t) { update(field, t, true); return strokes.slice(); },
     dropCount: () => drops,
+    /** Libera geometria e material (troca de região); quem tirou `mesh` da cena é o dono. */
+    dispose: () => disposeObject(mesh),
   };
 }

@@ -4,7 +4,8 @@
 
 const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-export function createTimeline(el, { clock, times, rainByHour, fmt }) {
+/** signal: ao abortar, todos os ouvintes (inclusive o de teclado na janela) saem; o conteúdo de `el` fica para quem recria. */
+export function createTimeline(el, { clock, times, rainByHour, fmt, signal }) {
   const { fmtLabel, fmtDay, localHourOf } = fmt;
   el.hidden = false;
   el.innerHTML = '';
@@ -67,18 +68,18 @@ export function createTimeline(el, { clock, times, rainByHour, fmt }) {
     track.setAttribute('aria-valuetext', label.textContent);
   }
 
-  play.addEventListener('click', () => clock.toggle());
-  speeds.addEventListener('click', (e) => { const s = e.target.dataset?.speed; if (s) clock.setSpeed(Number(s)); });
-  now.addEventListener('click', () => clock.home());
-  range.addEventListener('click', () => clock.setRange(clock.range === '72h' ? '7d' : '72h'));
+  play.addEventListener('click', () => clock.toggle(), { signal });
+  speeds.addEventListener('click', (e) => { const s = e.target.dataset?.speed; if (s) clock.setSpeed(Number(s)); }, { signal });
+  now.addEventListener('click', () => clock.home(), { signal });
+  range.addEventListener('click', () => clock.setRange(clock.range === '72h' ? '7d' : '72h'), { signal });
 
   // scrub por arrasto (mouse e toque)
   let dragging = false, wasPlaying = false;
   const seekTo = (e) => { const r = rail.getBoundingClientRect(); clock.seek(clock.tMin + ((e.clientX - r.left) / r.width) * (clock.tMax - clock.tMin)); };
-  track.addEventListener('pointerdown', (e) => { dragging = true; wasPlaying = clock.playing; clock.pause(); track.setPointerCapture(e.pointerId); seekTo(e); e.preventDefault(); });
-  track.addEventListener('pointermove', (e) => { if (dragging) seekTo(e); });
+  track.addEventListener('pointerdown', (e) => { dragging = true; wasPlaying = clock.playing; clock.pause(); track.setPointerCapture(e.pointerId); seekTo(e); e.preventDefault(); }, { signal });
+  track.addEventListener('pointermove', (e) => { if (dragging) seekTo(e); }, { signal });
   const end = () => { if (!dragging) return; dragging = false; if (wasPlaying) clock.play(); };
-  track.addEventListener('pointerup', end); track.addEventListener('pointercancel', end);
+  track.addEventListener('pointerup', end, { signal }); track.addEventListener('pointercancel', end, { signal });
 
   // teclado: espaço = play/pause, setas = ±1 h, Home = agora
   window.addEventListener('keydown', (e) => {
@@ -91,9 +92,9 @@ export function createTimeline(el, { clock, times, rainByHour, fmt }) {
     else if (e.code === 'Home') clock.home();
     else return;
     e.preventDefault();
-  });
+  }, { signal });
 
-  clock.onChange(update);
+  clock.onChange(() => { if (!signal?.aborted) update(); });
   update();
   return { update };
 }

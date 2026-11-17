@@ -29,9 +29,10 @@ export function tooltipLines(city, c) {
 
 /**
  * pick(clientX, clientY) devolve { x, z } na cena se o ponteiro está sobre a região, senão null.
+ * signal: ao abortar, os ouvintes do canvas saem.
  * nameAt(lon, lat) dá o título (município ou, na visão Brasil, o estado); sem ele vale o centroide mais próximo de `municipios`.
  */
-export function createTooltip(el, { canvas, pick, field, clock, municipios, nameAt = (lon, lat) => nearestCity(municipios, lon, lat), tapToShow = true, proj }) {
+export function createTooltip(el, { canvas, pick, field, clock, municipios, nameAt = (lon, lat) => nearestCity(municipios, lon, lat), tapToShow = true, proj, signal }) {
   let last = null;                                   // última posição com tooltip aberto
   const row = (k, v) => `<div class="tt-row"><span>${k}</span><b>${v}</b></div>`;
   function hide() { el.hidden = true; last = null; }
@@ -54,18 +55,18 @@ export function createTooltip(el, { canvas, pick, field, clock, municipios, name
   }
 
   let down = null;
-  canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, moved: false }; });
+  canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, moved: false }; }, { signal });
   canvas.addEventListener('pointermove', (e) => {
     if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) { down.moved = true; hide(); }   // arrastando a câmera
     if (e.pointerType === 'mouse' && !down) show(e.clientX, e.clientY);
-  });
+  }, { signal });
   canvas.addEventListener('pointerup', (e) => {
     const tap = down && !down.moved;
     down = null;
     if (e.pointerType !== 'mouse' && tap && tapToShow) show(e.clientX, e.clientY);     // toque sem arrasto abre; toque fora do estado fecha
-  });
-  canvas.addEventListener('pointercancel', () => { down = null; });
-  canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
-  clock.onChange(() => { if (last) show(last.clientX, last.clientY); });   // acompanha a linha do tempo
+  }, { signal });
+  canvas.addEventListener('pointercancel', () => { down = null; }, { signal });
+  canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); }, { signal });
+  clock.onChange(() => { if (last && !signal?.aborted) show(last.clientX, last.clientY); });   // acompanha a linha do tempo
   return { hide };
 }

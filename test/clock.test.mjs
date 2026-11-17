@@ -31,3 +31,14 @@ test('onChange dispara em seek, tick e setRange', () => {
   const c = mk(); let n = 0; c.onChange(() => n++);
   c.seek(3); assert.equal(n, 1); c.play(); const a = n; c.tick(0.05); assert(n > a); const b = n; c.setRange('7d'); assert(n > b);
 });
+
+test('from: abre no estado carregado, com t limitado à faixa', () => {
+  const c = createClock({ tNow: 2, tEnd72: 74, tEndAll: 167, from: { t: 30, playing: true, speed: 4, range: '72h' } });
+  assert.equal(c.t, 30); assert.equal(c.playing, true); assert.equal(c.speed, 4); assert.equal(c.range, '72h');
+  const d = createClock({ tNow: 2, tEnd72: 74, tEndAll: 167, from: { t: 500, playing: false, speed: 1, range: '72h' } });
+  assert.equal(d.t, d.tMax); assert.equal(d.tMax, 74);
+});
+test('from: faixa de 7 dias vale o fim da série', () => {
+  const c = createClock({ tNow: 2, tEnd72: 74, tEndAll: 167, from: { t: 150, range: '7d' } });
+  assert.equal(c.range, '7d'); assert.equal(c.t, 150); assert.equal(c.speed, 1); assert.equal(c.playing, false);
+});

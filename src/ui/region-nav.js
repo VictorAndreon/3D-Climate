@@ -16,9 +16,10 @@ export function goToRegion(target, loc = location) {
   loc.assign(loc.pathname + (q ? `?${q}` : '') + loc.hash);
 }
 
-export function createRegionNav(el, { region, onBack = () => goToRegion({}) }) {
+/** signal: ao abortar, o clique sai. */
+export function createRegionNav(el, { region, onBack = () => goToRegion({}), signal }) {
   el.hidden = region.kind !== 'uf';
   document.body.classList.toggle('in-uf', !el.hidden);       // no celular a busca cede espaço ao botão
-  el.addEventListener('click', () => onBack());
+  el.addEventListener('click', () => onBack(), { signal });
   return { el };
 }
