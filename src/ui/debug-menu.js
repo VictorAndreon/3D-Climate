@@ -30,7 +30,7 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
   function sync() {
     for (const name of ['nuvens', 'qualidade', 'dados']) for (const r of el.querySelectorAll(`input[name=${name}]`)) r.checked = r.value === cfg[name];
     const relevoOk = stage.state.relevoDisponivel;                  // fora do RS não há relevo: controle desabilitado
-    $('input[name=relevo]').checked = cfg.relevo; $('input[name=relevo]').disabled = !relevoOk;
+    $('input[name=relevo]').checked = cfg.relevo && relevoOk; $('input[name=relevo]').disabled = !relevoOk;
     $('input[name=relevo]').title = relevoOk ? '' : 'Relevo disponível só no Rio Grande do Sul';
     $('input[name=grade]').checked = cfg.grade;
     const fx = $('input[name=dados][value=fixture]');            // a fixture é gravada só do RS: fora dele, trocar para ela recarregaria em dado ao vivo
@@ -60,7 +60,7 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
     await stage.idle();
     input.removeAttribute('aria-busy');
     const st = stage.state;
-    cfg.nuvens = st.nuvens; cfg.relevo = st.relevo; cfg.exagero = st.exagero; cfg.grade = st.grade;
+    cfg.nuvens = st.nuvens; cfg.relevo = st.relevoPedido; cfg.exagero = st.exagero; cfg.grade = st.grade;
     sync(); writeUrl(); renderStats();
     return !failed;
   }
@@ -117,7 +117,7 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
   let acc = 0;
   return {
     /** Entrou noutra região no lugar: o menu passa a gravar a região nova na URL e reabilita o que ela permite. */
-    setRegion(id) { cfg.uf = id; cfg.relevo = stage.state.relevo; sync(); },
+    setRegion(id) { cfg.uf = id; cfg.relevo = stage.state.relevoPedido; sync(); },
     tick(dt) {
       if (el.hidden) return;
       acc += dt;

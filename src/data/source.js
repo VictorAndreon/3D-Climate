@@ -16,7 +16,7 @@ export function shouldReload(status, nowUnix, loadedAtUnix) {
 const hourFloor = (unix) => Math.floor(unix / 3600) * 3600;
 const covers = (series, nowUnix) => series.times[series.nT - 1] >= nowUnix;
 
-export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cacheTimeoutMs = 1500 }) {
+export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cacheTimeoutMs = 1500, signal }) {
   if (mode === 'demo') return { series: deps.syntheticSeries(grid, hourFloor(nowUnix)), status: { kind: 'demo', fetchedAt: nowUnix }, nowUnix };
   if (mode === 'fixture') {
     const series = await deps.loadFixture();
@@ -28,10 +28,12 @@ export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cach
   if (cache && (cache.series?.nP !== grid.nP || !covers(cache.series, nowUnix))) cache = null;   // outra grade ou série que já terminou
   if (cache && nowUnix - cache.fetchedAt < CACHE_TTL) return { series: cache.series, status: { kind: 'cache', fetchedAt: cache.fetchedAt }, nowUnix };
   try {
-    const series = await deps.fetchForecast(grid);
+    const series = await deps.fetchForecast(grid, { signal });
+    if (signal?.aborted) throw new DOMException('carga abortada', 'AbortError');
     await within(deps.saveCache(gridVersion, series, nowUnix), cacheTimeoutMs, null);   // sem cache: segue ao vivo
     return { series, status: { kind: 'live', fetchedAt: nowUnix }, nowUnix };
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e;                           // pedido superado: nada de demo nem de selo, quem pediu já saiu
     if (cache) return { series: cache.series, status: { kind: 'stale', fetchedAt: cache.fetchedAt }, nowUnix };
     return { series: deps.syntheticSeries(grid, hourFloor(nowUnix)), status: { kind: 'demo-fallback', fetchedAt: nowUnix }, nowUnix };
   }

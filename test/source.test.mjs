@@ -86,3 +86,10 @@ test('Final#4: desatualizado tenta de novo no máximo a cada 15 min (não a cada
   assert.equal(shouldReload({ kind: 'stale', fetchedAt: at }, loaded + 60, loaded), false);
   assert.equal(shouldReload({ kind: 'stale', fetchedAt: at }, loaded + 901, loaded), true);
 });
+
+test('Final#1: carga abortada rejeita (não vira demo nem stale) e não grava cache', async () => {
+  const ctl = new AbortController(), saved = [];
+  const d = { ...deps(), fetchForecast: async (g, { signal } = {}) => { ctl.abort(); if (signal?.aborted) throw new DOMException('abortado', 'AbortError'); return mk(HOUR0, 1); }, saveCache: async () => { saved.push(1); } };
+  await assert.rejects(loadWeather({ mode: 'live', grid, gridVersion: "gv", nowUnix: NOW, deps: d, signal: ctl.signal }));
+  assert.equal(saved.length, 0);
+});

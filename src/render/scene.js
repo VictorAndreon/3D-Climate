@@ -147,19 +147,24 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
 
   // voo de abertura: de uma vista alta e afastada até a vista padrão; qualquer interação cancela
   function flyIn(name = 'se', seconds = 1.8) {
+    controls.dispatchEvent({ type: 'start' });                 // cancela voo ou foco anterior (e devolve o maxDistance dele antes de guardarmos o nosso)
     const v = VIEWS[name] ?? VIEWS.se, to = { ...v, dist: v.dist * frame.dist }, from = { az: to.az - 0.5, polar: 14 * DEG, dist: frame.distFly };
-    let t = 0, active = true;
-    const cancel = () => { active = false; controls.removeEventListener('start', cancel); };
-    controls.addEventListener('start', cancel);
-    const pose = (k) => camera.position.copy(viewPosition({ az: from.az + (to.az - from.az) * k, polar: from.polar + (to.polar - from.polar) * k, dist: from.dist + (to.dist - from.dist) * k }, controls.target));
+    let t = 0;
     const savedMax = controls.maxDistance;
-    controls.maxDistance = frame.distFlyMax; pose(0); camera.lookAt(controls.target);
-    frameFns.push((now, dt) => {
-      if (!active) { controls.maxDistance = savedMax; return; }
+    const cancel = () => {
+      controls.removeEventListener('start', cancel);
+      controls.maxDistance = savedMax;
+      const i = frameFns.indexOf(step); if (i >= 0) frameFns.splice(i, 1);   // voo terminado não fica gravando por quadro
+    };
+    const pose = (k) => camera.position.copy(viewPosition({ az: from.az + (to.az - from.az) * k, polar: from.polar + (to.polar - from.polar) * k, dist: from.dist + (to.dist - from.dist) * k }, controls.target));
+    const step = (now, dt) => {
       t = Math.min(1, t + dt / seconds);
       pose(1 - (1 - t) ** 3);                                  // ease-out
       if (t >= 1) cancel();
-    });
+    };
+    controls.addEventListener('start', cancel);
+    controls.maxDistance = frame.distFlyMax; pose(0); camera.lookAt(controls.target);
+    frameFns.push(step);
   }
 
   // leva o alvo da câmera até (x, z) mantendo o ângulo; se estiver longe, aproxima até maxDist. Qualquer interação cancela
@@ -223,5 +228,6 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,
+    frameCount: () => frameFns.length,                         // só para o roteiro de depuração: callbacks por quadro vivos
   };
 }

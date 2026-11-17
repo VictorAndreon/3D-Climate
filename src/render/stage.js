@@ -173,7 +173,7 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
     }
     ++cloudReq; ++mapReq;                                        // cargas em voo eram da região de antes; os pedidos delas já estão em `want`
     state.nuvens = kind; state.relevo = !!relief; state.exagero = want.exagero; state.relevoDisponivel = hasRelief;
-    want.relevo = state.relevo;
+    if (hasRelief) want.relevo = state.relevo;                   // sem relevo na região nova o pedido fica anotado: ao voltar a uma região com relevo, ele volta
     onSwap('region');
   }
 
@@ -185,7 +185,7 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
     get dots() { return dots; },
     get rain() { return rain; },
     get lightning() { return lightning; },
-    get state() { return { ...state }; },
+    get state() { return { ...state, relevoPedido: want.relevo }; },
     setClouds: (kind) => track(setClouds(kind)),
     setRelief: (on, exagero) => track(setRelief(on, exagero)),
     setDots,

@@ -63,7 +63,7 @@ const { serve, launch, open } = require('./lib.cjs');
 
     await page.evaluate(() => __rs.stage.setRegion(__r.RS)); await frames(page);
     s = await st();
-    check('volta ao RS: relevo continua desligado, disponível de novo', !s.relevo && s.relevoDisponivel, JSON.stringify(s));
+    check('volta ao RS: o relevo pedido volta ligado, disponível de novo', s.relevo && s.relevoDisponivel, JSON.stringify(s));
     check('volta ao RS: relevo liga de novo', await page.evaluate(async () => { await __rs.stage.setRelief(true, 12); const ok = __rs.stage.state.relevo; await __rs.stage.setRelief(false); return ok; }));
     const base = await st();
 

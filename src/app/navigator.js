@@ -12,12 +12,13 @@ const DIVE_S = 1.1;
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * loadData(region) → data (a mesma forma de loadWeather); sessionDeps: { lights }, repassado a cada sessão;
+ * loadData(region, signal) → data (a mesma forma de loadWeather); sessionDeps: { lights }, repassado a cada sessão;
  * onSession(session) roda a cada sessão nova (a primeira inclusive), no mesmo quadro da troca.
  */
 export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps, onSession = () => {} }) {
   const ufs = index.map((r) => r.id);
   let current = null, reqId = 0, diving = false, swapChain = Promise.resolve(), msgTimer = 0;
+  const loads = new Map();                                   // sigla -> { ctl, promise }: carga em voo de cada região
   const hasCam = () => new URLSearchParams(location.search).has('cam');   // cam= fixa a vista (roteiros): sem voo de abertura
 
   function makeSession(region, data, from) {
@@ -34,10 +35,27 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     if (!focused && animate && !hasCam() && req === reqId && session === current) view.flyIn('se');   // pedido superado não mexe na câmera
   }
 
+  /** Carga de região e dado; quem pede a mesma região em voo reaproveita a promessa (duplo toque = uma carga só). */
+  function load(id, info) {
+    let l = loads.get(id);
+    if (l) return l.promise;
+    const ctl = new AbortController();
+    const promise = (async () => { const region = await loadRegion(info); return { region, data: await loadData(region, ctl.signal) }; })();
+    l = { ctl, promise };
+    loads.set(id, l);
+    const drop = () => { if (loads.get(id) === l) loads.delete(id); };
+    promise.then(drop, drop);
+    return promise;
+  }
+  /** Pedido novo supera as cargas das outras regiões: aborta as requisições delas (não gasta cota à toa). */
+  function abortLoadsExcept(keep) {
+    for (const [id, l] of loads) if (id !== keep) { l.ctl.abort(); loads.delete(id); }
+  }
+
   /** Primeira sessão, depois de palco e dado prontos. */
   async function start(region, data) {
     const s = makeSession(region, data);
-    await arrive(s, { mun: cfg.mun, animate: false });
+    await arrive(s, { mun: cfg.mun, animate: !reduced() });   // voo de abertura (arrive o pula com cam= na URL)
   }
 
   function say(text) {
@@ -47,21 +65,21 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     msgTimer = setTimeout(() => { el.hidden = true; el.textContent = ''; }, MSG_MS);
   }
   const clearLoading = () => { delete document.body.dataset.loading; };
+  const urlOf = (region) => { const q = regionSearch(location.search, { uf: region.id === DEFAULT_REGION ? null : region.id }); return location.pathname + (q ? `?${q}` : '') + location.hash; };
+  /** Voltar/avançar para uma região que não carregou: a URL já mudou, a cena não; a URL volta a dizer o que está na tela. */
+  const failed = (pop, req) => { if (pop && req === reqId) history.replaceState(null, '', urlOf(current.region)); };
 
   /** Passa a região para o palco e troca a sessão no mesmo quadro (nada entre as duas coisas espera um quadro). */
   async function commit(req, region, data, { mun, pop, info }) {
     if (req !== reqId) return false;                           // superado enquanto esperava a vez: a cena não é tocada
     try { await stage.setRegion(region); }
-    catch (e) { console.warn('troca de região falhou', e); if (req === reqId) { clearLoading(); say(`Não foi possível carregar ${info.name}.`); } return false; }
+    catch (e) { console.warn('troca de região falhou', e); if (req === reqId) { clearLoading(); say(`Não foi possível carregar ${info.name}.`); failed(pop, req); } return false; }
     const old = current;
     const from = { t: old.clock.t, times: old.field.times, playing: old.clock.playing, speed: old.clock.speed, range: old.clock.range };
     old.dispose();
     const s = makeSession(region, data, from);               // o campo novo nasce aqui: nenhum quadro roda com o campo velho na região nova
     view.setRegion(region.bounds);
-    if (!pop) {
-      const q = regionSearch(location.search, { uf: region.id === DEFAULT_REGION ? null : region.id });
-      history.pushState(null, '', location.pathname + (q ? `?${q}` : '') + location.hash);
-    }
+    if (!pop) history.pushState(null, '', urlOf(region));
     if (req === reqId) clearLoading();
     await arrive(s, { mun, animate: !reduced(), req });
     return req === reqId;                                      // superado no meio da troca: a troca terminou, mas este pedido não vale
@@ -72,6 +90,7 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     const info = index.find((r) => r.id === id);
     if (!info) return false;
     const req = ++reqId;
+    abortLoadsExcept(id === current.region.id ? null : id);
     if (id === current.region.id) {                            // já está lá: cancela a carga pendente e, se havia mergulho, desfaz
       clearLoading();
       if (diving) { diving = false; view.controls.dispatchEvent({ type: 'start' }); view.setRegion(current.region.bounds); }   // 'start' cancela o voo; a câmera volta à vista da região
@@ -80,16 +99,17 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     }
     document.body.dataset.loading = id;
     let region, data;
-    try { region = await loadRegion(info); data = await loadData(region); }
+    try { ({ region, data } = await load(id, info)); }
     catch (e) {
       console.warn('região indisponível', e);
-      if (req === reqId) { clearLoading(); say(`Não foi possível carregar ${info.name}.`); }
+      if (req === reqId) { clearLoading(); say(`Não foi possível carregar ${info.name}.`); failed(pop, req); }
       return false;
     }
     if (req !== reqId) return false;
     if (region.kind === 'uf' && current.region.kind !== 'uf' && data.status.kind === 'demo-fallback') {
       clearLoading();                                          // do Brasil: dado sintético por falha de rede não vale a troca
       say(`Não foi possível carregar ${info.name}.`);
+      failed(pop, req);
       return false;
     }
     if (region.kind === 'uf' && current.region.kind !== 'uf' && !reduced()) {      // mergulho até o centro do estado, ainda na cena do Brasil

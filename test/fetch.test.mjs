@@ -70,3 +70,24 @@ test('Final#3: lote que nunca responde vira falha pelo timeout, e os outros são
   await assert.rejects(fetchForecast(grid, { fetchImpl: hang, timeoutMs: 60 }));
   assert(Date.now() - t0 < 2000); assert(aborted >= 1);
 });
+
+test('Final#1: signal abortado de fora aborta os lotes em voo e rejeita', async () => {
+  const ctl = new AbortController(), seen = [];
+  const impl = (url, { signal }) => new Promise((_, rej) => {
+    seen.push(signal);
+    signal.addEventListener('abort', () => rej(new DOMException('abortado', 'AbortError')));
+  });
+  const p = fetchForecast(grid, { fetchImpl: impl, signal: ctl.signal, timeoutMs: 60000 });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(seen.length, 4);                              // 4 lotes em paralelo
+  ctl.abort();
+  const guard = new Promise((_, rej) => setTimeout(() => rej(new Error('não abortou')), 500));
+  await assert.rejects(Promise.race([p, guard]), (e) => e.name === 'AbortError');
+  assert.ok(seen.every((s) => s.aborted));
+});
+test('Final#1: signal já abortado não dispara nenhum lote', async () => {
+  const ctl = new AbortController(); ctl.abort();
+  const { impl, st } = fakeFetch();
+  await assert.rejects(fetchForecast(grid, { fetchImpl: impl, signal: ctl.signal }));
+  assert.equal(st.calls, 0);
+});

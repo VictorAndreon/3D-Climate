@@ -63,8 +63,8 @@ async function run(cfg, region, view, index) {
   view.scene.add(lights.hemi, lights.sun);
 
   // dado da região: a mesma regra de sempre (ao vivo, cache, demo), com a grade e a versão dela; a fixture só existe do RS
-  const loadData = (r) => loadWeather({
-    mode: cfg.dados === 'fixture' && r.id !== 'RS' ? 'live' : cfg.dados, grid: r.grid, gridVersion: r.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
+  const loadData = (r, signal) => loadWeather({
+    signal, mode: cfg.dados === 'fixture' && r.id !== 'RS' ? 'live' : cfg.dados, grid: r.grid, gridVersion: r.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
     deps: {
       fetchForecast, loadCache, saveCache, syntheticSeries: (g, start) => syntheticSeries(g, start, r.proj),
       loadFixture: async () => buildSeries(r.grid, normalizeResponse(await (await fetch('./assets/fixture.json')).json())),

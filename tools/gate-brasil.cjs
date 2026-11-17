@@ -37,6 +37,13 @@ const READY = () => document.documentElement.dataset.ready === '1';
     await page.waitForFunction((src) => [...document.querySelectorAll('.cs-list li')].some(eval(src)), want.toString(), { timeout: 60000 }).catch(() => {});
   };
 
+  /** O voo de abertura terminou: o teto de distância voltou ao da vista (o navegador por software engasga e alonga o voo). */
+  const flown = (page) => page.evaluate(async () => {
+    const { framing } = await import('./src/render/scene.js');
+    for (let i = 0; i < 1200; i++) { if (__rs.view.controls.maxDistance <= framing(__rs.region.bounds).maxDistance + 0.01) return true; await new Promise((r) => setTimeout(r, 100)); }
+    return false;
+  });
+
   // ---------- abertura ----------
   {
     const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
@@ -304,7 +311,7 @@ const READY = () => document.documentElement.dataset.ready === '1';
   {
     // pedido pela região que já está na tela durante o mergulho: o voo é cancelado e a câmera volta à vista do Brasil
     const { page } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
-    await page.waitForTimeout(4000);                              // o voo de abertura termina
+    await flown(page);                                            // o voo de abertura termina (o navegador por software o alonga)
     const view = () => page.evaluate(async () => {
       const { framing } = await import('./src/render/scene.js');
       const f = framing(__rs.region.bounds), c = __rs.view.camera.position, t = __rs.view.controls.target;
@@ -320,6 +327,118 @@ const READY = () => document.documentElement.dataset.ready === '1';
     const v = await view();
     check('mergulho cancelado: go(SP) false, go(BR) true, continua em BR', r.first === false && r.back === true && await page.evaluate(() => __rs.region.id === 'BR' && !location.search.includes('uf=') && !document.body.dataset.loading), JSON.stringify(r));
     check('mergulho cancelado: câmera de volta ao enquadramento do Brasil', Math.abs(v.dist - v.want) < 1 && Math.abs(v.dx) < 0.5 && Math.abs(v.dz) < 0.5, JSON.stringify(v));
+    await page.close();
+  }
+
+
+  // ---------- revisão final: cargas duplicadas ou superadas, voo de abertura, relevo, histórico ----------
+  /** API do tempo falsa: o Brasil (graus inteiros) e os estados respondem; `slow(url)` atrasa respostas; `seen` registra tudo. */
+  const mockApi = async (page, { slow = () => 0, failStates = false } = {}) => {
+    const seen = [];
+    await page.route('https://api.open-meteo.com/**', async (route) => {
+      const url = route.request().url(), sp = new URL(url).searchParams, la = sp.get('latitude').split(','), lo = sp.get('longitude').split(',');
+      const isState = ![...la, ...lo].every((v) => Number.isInteger(Number(v)));
+      const meanLat = la.reduce((a, v) => a + Number(v), 0) / la.length, meanLon = lo.reduce((a, v) => a + Number(v), 0) / lo.length;
+      const uf = !isState ? 'BR' : meanLon < -56 ? 'AM' : meanLat < -25.6 ? 'SC' : 'SP';
+      seen.push(uf);
+      if (isState && failStates) return route.abort('failed');
+      const ms = slow(uf);
+      if (ms) await new Promise((r) => setTimeout(r, ms));
+      const start = Math.floor(Date.now() / 3600000) * 3600, n = 168, arr = (v) => Array.from({ length: n }, () => v);
+      const body = la.map((v, i) => ({ latitude: +v, longitude: +lo[i], hourly: { time: Array.from({ length: n }, (_, h) => start + h * 3600), cloud_cover_low: arr(30), cloud_cover_mid: arr(20), cloud_cover_high: arr(10), precipitation: arr(0), weather_code: arr(1), wind_speed_10m: arr(10), wind_direction_10m: arr(90) } }));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.length === 1 ? body[0] : body) }).catch(() => {});   // pedido abortado: a resposta não tem para quem ir
+    });
+    return seen;
+  };
+  const openLive = async (query, opts) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const seen = await mockApi(page, opts);
+    await page.goto(`${srv.url}index.html?${query}`);
+    await page.waitForFunction(READY, null, { timeout: 120000 });
+    return { page, errors, seen };
+  };
+  {
+    // duplo toque: dois go('SP') seguidos são UMA carga de SP
+    const { page, errors, seen } = await openLive('debug=1');
+    const batches = await page.evaluate(async () => Math.ceil((await __rs.loadRegion('SP')).grid.nP / 50));
+    seen.length = 0;
+    const r = await page.evaluate(async () => { const a = __rs.nav.go('SP'), b = __rs.nav.go('SP'); return [await a, await b]; });
+    check('duplo go(SP): o primeiro é superado, o segundo termina em SP', r[0] === false && r[1] === true && await page.evaluate(() => __rs.region.id) === 'SP', JSON.stringify(r));
+    check('duplo go(SP): as requisições são as de UMA carga de SP', seen.filter((u) => u === 'SP').length === batches, `${seen.filter((u) => u === 'SP').length} de ${batches}`);
+    check('duplo go(SP): sem erro de página', errors.length === 0, errors.join(' | '));
+    await page.close();
+  }
+  {
+    // rajada AM, SC: a carga de AM em voo é abortada, sem aviso de falha
+    const { page, errors, seen } = await openLive('debug=1', { slow: (u) => (u === 'AM' ? 1500 : 0) });
+    const amBatches = await page.evaluate(async () => Math.ceil((await __rs.loadRegion('AM')).grid.nP / 50));
+    let finished = 0;
+    page.on('requestfinished', (rq) => { const sp = new URL(rq.url()).searchParams; if (sp.get('latitude') && Number(sp.get('longitude').split(',')[0]) < -56) finished++; });
+    seen.length = 0;
+    await page.evaluate(() => { window.__am = __rs.nav.go('AM'); });
+    while (seen.filter((u) => u === 'AM').length === 0) await page.waitForTimeout(50);   // a carga de AM já está na rede
+    const r = await page.evaluate(async () => { const sc = __rs.nav.go('SC'); return [await window.__am, await sc]; });
+    await landed(page, 'SC');
+    await page.waitForTimeout(3500);                              // dá tempo de uma carga de AM que não foi abortada terminar
+    const am = seen.filter((u) => u === 'AM').length;
+    check('rajada AM, SC: AM superado, termina em SC', r[0] === false && r[1] === true && await page.evaluate(() => __rs.region.id === 'SC' && location.search.includes('uf=SC')), JSON.stringify(r));
+    check('rajada AM, SC: as requisições de AM em voo foram abortadas', am <= 4 && am < amBatches && finished === 0, `${am} iniciadas de ${amBatches}, ${finished} completas`);
+    check('rajada AM, SC: sem mensagem de falha', await page.evaluate(() => document.getElementById('region-msg').hidden && document.getElementById('region-msg').textContent === ''));
+    check('rajada AM, SC: sem erro de página', errors.length === 0, errors.join(' | '));
+    await page.close();
+  }
+  {
+    // voo de abertura: sem cam= a câmera se move; com cam= fica parada
+    const dist = (page) => page.evaluate(() => { const c = __rs.view.camera.position, t = __rs.view.controls.target; return Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z); });
+    const want = (page) => page.evaluate(async () => (await import('./src/render/scene.js')).framing(__rs.region.bounds).dist);
+    const { page } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
+    const w = await want(page), d0 = await dist(page);
+    await flown(page);
+    const d1 = await dist(page);
+    check('voo de abertura: sem cam= a câmera começa longe e chega à vista padrão', d0 > w * 1.1 && Math.abs(d1 - w) < 1, `${d0.toFixed(1)} -> ${d1.toFixed(1)} (vista ${w.toFixed(1)})`);
+    await page.close();
+    const { page: fixed } = await open(browser, srv.url, 'demo=1&debug=1&cam=se', { timeout: 120000 });
+    const f0 = await dist(fixed);
+    await fixed.waitForTimeout(3000);
+    const f1 = await dist(fixed);
+    check('voo de abertura: com cam=se a câmera não se move', Math.abs(f0 - w) < 1 && Math.abs(f1 - f0) < 0.01, `${f0.toFixed(2)} -> ${f1.toFixed(2)}`);
+    await fixed.close();
+  }
+  {
+    // callbacks por quadro do voo não se acumulam
+    const { page } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
+    await flown(page);
+    const c0 = await page.evaluate(() => __rs.view.frameCount());
+    await page.evaluate(async () => { for (let i = 0; i < 3; i++) { await __rs.nav.go('SP'); await __rs.nav.go('BR'); } });
+    await flown(page);
+    const c1 = await page.evaluate(() => __rs.view.frameCount());
+    check('3 idas e voltas BR <-> SP: callbacks por quadro iguais aos de antes', c1 === c0, `${c0} -> ${c1}`);
+    await page.close();
+  }
+  {
+    // relevo: RS com relevo -> Brasil -> RS volta com relevo, e a URL continua dizendo relevo=1
+    const { page } = await open(browser, srv.url, 'demo=1&debug=1&uf=RS&relevo=1&cam=se', { timeout: 120000 });
+    check('RS abre com relevo', await page.evaluate(() => __rs.stage.state.relevo));
+    await page.evaluate(() => __rs.nav.go('BR'));
+    check('BR: relevo fora, controle desabilitado e desmarcado', await page.evaluate(() => !__rs.stage.state.relevo && document.querySelector('input[name=relevo]').disabled && !document.querySelector('input[name=relevo]').checked));
+    await page.evaluate(() => __rs.nav.go('RS'));
+    await page.evaluate(() => __rs.stage.idle());
+    check('RS -> BR -> RS: o relevo volta na tela', await page.evaluate(() => __rs.stage.state.relevo && !!__rs.stage.map.userData.heightAt));
+    check('RS -> BR -> RS: URL com relevo=1 e menu marcado', await page.evaluate(() => location.search.includes('relevo=1') && document.querySelector('input[name=relevo]').checked && !document.querySelector('input[name=relevo]').disabled), await page.evaluate(() => location.search));
+    await page.close();
+  }
+  {
+    // voltar/avançar para um estado que não carrega: a URL volta a dizer o que está na tela
+    const { page, errors } = await openLive('debug=1', { failStates: true });
+    await page.evaluate(() => { history.pushState(null, '', '?debug=1&uf=SP'); history.back(); });
+    await page.waitForFunction(() => !location.search.includes('uf='));
+    await page.evaluate(() => history.forward());
+    await page.waitForFunction(() => !document.getElementById('region-msg').hidden, null, { timeout: 60000 });
+    check('história: avançar para SP que falha mantém o Brasil na tela', await page.evaluate(() => __rs.region.id === 'BR' && !document.body.dataset.loading));
+    check('história: ... e a URL sem uf', await page.evaluate(() => !location.search.includes('uf=') && location.search.includes('debug=1')), await page.evaluate(() => location.search));
+    check('história: sem erro de página', errors.length === 0, errors.join(' | '));
     await page.close();
   }
 

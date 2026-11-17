@@ -13,13 +13,18 @@ export function buildUrls(grid, batch = 50) {
   return urls;
 }
 
-/** Rejeita em qualquer falha (rede, HTTP != 2xx, error:true, lote incompleto, séries tortas). */
-export async function fetchForecast(grid, { fetchImpl = fetch, parallel = 4, batch = 50, timeoutMs = 10000 } = {}) {
+/** Rejeita em qualquer falha (rede, HTTP != 2xx, error:true, lote incompleto, séries tortas).
+ *  `signal` externo: quem pediu desistiu (pedido superado); aborta os lotes em voo e não dispara os que faltam. */
+export async function fetchForecast(grid, { fetchImpl = fetch, parallel = 4, batch = 50, timeoutMs = 10000, signal } = {}) {
   const urls = buildUrls(grid, batch), parts = new Array(urls.length);
   const all = new AbortController();               // um lote falhou: aborta os outros (não gasta cota à toa)
+  const onOuter = () => all.abort();
+  if (signal?.aborted) throw new DOMException('carga abortada', 'AbortError');
+  signal?.addEventListener('abort', onOuter);
   let next = 0;
   async function worker() {
     while (next < urls.length) {
+      if (all.signal.aborted) throw new DOMException('carga abortada', 'AbortError');
       const i = next++, expected = Math.min(batch, grid.nP - i * batch);
       const ctl = new AbortController();
       const onAll = () => ctl.abort();
@@ -37,5 +42,6 @@ export async function fetchForecast(grid, { fetchImpl = fetch, parallel = 4, bat
   }
   try { await Promise.all(Array.from({ length: Math.min(parallel, urls.length) }, worker)); }
   catch (e) { all.abort(); throw e; }
+  finally { signal?.removeEventListener('abort', onOuter); }
   return buildSeries(grid, parts.flat());
 }
