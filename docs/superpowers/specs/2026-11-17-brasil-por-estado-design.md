@@ -215,3 +215,24 @@ passear por ele não pode ser visivelmente mais lento que o RS na mesma máquina
   tamanho de nuvem. Só dá para saber olhando.
 - **Lentidão do ambiente de desenvolvimento.** O renderizador por software deixa os roteiros lentos e as
   capturas de tela instáveis (visto no projeto anterior).
+
+## Adendo (2026-11-18): limite por minuto da API
+
+Descoberto na revisão final: a API grátis do Open-Meteo aceita no máximo **600 pontos de grade por minuto**
+(cabeçalhos `X-RateLimit-Limit: 600`, `X-RateLimit-Window: 60`, `X-RateLimit-Cost: 1` por ponto,
+conferidos com uma chamada real). O Brasil a 1° (887) e AM, PA, MT, MG, BA e MS passam disso sozinhos, e
+Brasil + estado no mesmo minuto também.
+
+**Decisão do Victor (opção 1 de 3):** teto de pontos por região e espera quando a API recusar.
+
+- **Teto de 550 pontos por região.** Cada região usa o menor passo de grade, da lista 0,25 · 0,3 · 0,35 ·
+  0,4 · 0,5 · 0,6 · 0,75 · 1 · 1,25 · 1,5 °, que dê no máximo 550 pontos. O RS (546 a 0,25°) e todos os
+  estados que já cabem não mudam. Como cada maquete ocupa o mesmo tamanho de tela, a densidade visual das
+  regiões grandes fica igual à do RS; perde-se detalhe em km, não na tela.
+- **Espera quando a API recusa.** Uma resposta HTTP 429 não é falha: a carga guarda os lotes que já
+  chegaram, espera a janela liberar e continua. Enquanto espera, a tela diz que está aguardando a API e
+  quantos segundos faltam. Só desiste (e cai no comportamento de falha de hoje) se a API recusar três
+  janelas seguidas.
+- **Dado sintético por falha tenta de novo.** Hoje `demo-fallback` nunca recarrega; passa a tentar de novo
+  como o dado desatualizado (no máximo a cada 15 min).
+- Custo aceito: entrar num estado logo depois de abrir o Brasil pode demorar até um minuto.
