@@ -10,7 +10,8 @@ const { serve, launch, open } = require('./lib.cjs');
 
   // ---------- palco ----------
   {
-  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1&t=30');
+  // cam=se: sem o voo de abertura, que em renderizador lento ainda está em curso quando a página fica pronta
+  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1&t=30&cam=se');
   await frames(page);
   const st = () => page.evaluate(() => ({ ...__rs.stage.state, mem: __rs.memory(), info: __rs.stats().cloudInfo, t: __rs.clock.t }));
   const cam = () => page.evaluate(() => __rs.view.camera.position.toArray());   // expor `view` em __rs

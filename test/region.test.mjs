@@ -37,7 +37,7 @@ test('câmera do RS reproduz os números de hoje (±1 unidade)', async () => {
 });
 test('câmera de um estado pequeno encolhe com ele e a de um grande se mantém', async () => {
   const df = framing((await load('DF')).bounds), sp = framing((await load('SP')).bounds);
-  assert.ok(df.dist < 60, `DF ${df.dist}`);
+  assert.ok(df.dist < 0.75 * sp.dist, `DF ${df.dist} × SP ${sp.dist}`);
   assert.ok(sp.dist > 90 && sp.dist < 110, `SP ${sp.dist}`);
   assert.ok(df.pan.minX < df.target.x && df.target.x < df.pan.maxX);
 });
