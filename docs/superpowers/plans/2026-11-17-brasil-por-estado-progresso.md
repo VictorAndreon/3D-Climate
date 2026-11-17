@@ -2,19 +2,8 @@
 
 As 6 tarefas estão concluídas, a revisão final foi feita e suas correções (`7bb3381`) foram re-revisadas.
 
-**Bloqueio antes da `main`:** a API grátis do Open-Meteo aceita no máximo 600 pontos de grade por minuto
-(cabeçalhos `X-RateLimit-Limit: 600`, `X-RateLimit-Window: 60`, `X-RateLimit-Cost: 1` por ponto). Brasil
-(887) e AM, PA, MT, MG, BA e MS passam disso sozinhos, e Brasil + estado no mesmo minuto também. Os roteiros
-não pegam porque simulam a API. Opções levadas ao Victor: (1) teto de ~550 pontos por região com grade mais
-espaçada nas grandes + esperar e continuar quando a API recusar (recomendada); (2) só esperar; (3) grade
-grossa em todos, mexendo no RS.
-
-
-Plano: `docs/superpowers/plans/2026-11-17-brasil-por-estado.md`.
-Design: `docs/superpowers/specs/2026-11-17-brasil-por-estado-design.md`.
-Branch: `claude/gifted-brahmagupta-1gfna8`. A `main` está em `889009d` (só o menu de debug).
-Execução: um subagente Sonnet por tarefa, mais um revisor por tarefa. Pausado a pedido do Victor para
-poupar tokens.
+**Limite da API resolvido** (opção 1 do Victor, tarefa 7, `2c91b33`): teto de 550 pontos por região e espera
+quando a API recusa por excesso no minuto. Ver o adendo no fim do design. A branch está pronta para a `main`.
 
 ## Estado das tarefas
 
@@ -26,6 +15,8 @@ poupar tokens.
 | 4 | Brasil como região de abertura | concluída, revisão limpa | `76eb8cc` |
 | 5 | Peças que sabem ser desligadas | concluída, revisão limpa após 1 correção | `b91191b` |
 | 6 | Entrar e sair de estado sem recarregar | concluída, revisão limpa após 1 correção | `74fe3e9` |
+| — | Correções da revisão final | re-revisadas | `7bb3381` |
+| 7 | Limite por minuto da API (adendo) | concluída, revisão limpa | `2c91b33` |
 
 ## Tarefa 3: onde parou
 
@@ -81,3 +72,15 @@ Para retomar a tarefa 3:
 - `page.screenshot` pode estourar 30 s em pontos aleatórios; `gate-rain` falha por isso mesmo com o código
   antigo. Verificar com uma cópia sem a linha da captura.
 - Commits levam os trailers `Co-Authored-By` e `Claude-Session`.
+
+## Pendências menores registradas (não corrigidas)
+
+- Espera da API sem teto se o cabeçalho de reset vier absurdo; aviso de espera limpo por qualquer carga que
+  termina; aviso de espera e de falha na mesma posição da tela.
+- `mun` não fica na URL depois de escolher na busca; `mun=` de link profundo fica depois de fechar o painel.
+- Dado sintético do Brasil com a faixa de chuva fixa em km (fica fina no país inteiro).
+- Histórico: `uf` desconhecido via voltar/avançar fica na URL; um pedido superado pode deixar uma entrada a
+  mais no histórico.
+- Roteiros: o de vazamento prova só ouvintes de teclado na janela; "relevo liga de novo" do `gate-pecas`
+  ficou quase vazio.
+- Ponta sul do Brasil encosta na linha do tempo em 1280×800.
