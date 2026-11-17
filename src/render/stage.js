@@ -57,6 +57,7 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
   const state = { nuvens: null, relevo: false, exagero: 12, grade: false, relevoDisponivel: hasRelief };      // relevo só onde há .bin (RS)
   let map = null, clouds = null, dots = null, rain = null, lightning = null;
   let regionReq = 0;
+  const want = { nuvens: null, relevo: false, exagero: 12 };       // último pedido de nuvem e de relevo, anotado na chamada: setRegion constrói com ele
   let cloudReq = 0, mapReq = 0, reliefP = null, noiseP = null;
   const pending = new Set();
   const track = (p) => { pending.add(p); const done = () => pending.delete(p); p.then(done, done); return p; };
@@ -77,6 +78,7 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
 
   async function setClouds(kind) {
     const req = ++cloudReq;                                    // pedido novo supera qualquer carga pendente
+    want.nuvens = kind;
     if (clouds && kind === state.nuvens) return;
     const noise = kind === 'volume' ? await once(() => noiseP, loadNoise, (p) => (noiseP = p)) : null;
     if (req !== cloudReq) return;
@@ -96,14 +98,15 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
   /** Rejeita se o relevo não carregar; nesse caso o mapa que estava continua (ou entra o plano, se não havia nenhum). */
   async function setRelief(on, exagero = state.exagero) {
     const req = ++mapReq;
+    want.relevo = on; want.exagero = exagero;
     if (map && on === state.relevo && (!on || exagero === state.exagero)) { state.exagero = exagero; return; }
-    if (on && !hasRelief) { if (!map) swapMap(createMap(geo, { proj })); throw new Error('relevo indisponível nesta região'); }
+    if (on && !hasRelief) { want.relevo = state.relevo; if (!map) swapMap(createMap(geo, { proj })); throw new Error('relevo indisponível nesta região'); }
     if (!on) { state.relevo = false; state.exagero = exagero; swapMap(createMap(geo, { proj })); return; }
     let relief;
     try { relief = await once(() => reliefP, loadRelief, (p) => (reliefP = p)); }
-    catch (e) { if (!map && req === mapReq) swapMap(createMap(geo, { proj })); throw e; }
+    catch (e) { if (req === mapReq) want.relevo = state.relevo; if (!map && req === mapReq) swapMap(createMap(geo, { proj })); throw e; }
     if (req !== mapReq) return;
-    if (!hasRelief) throw new Error('relevo indisponível nesta região');       // a região trocou enquanto o relevo carregava
+    if (!hasRelief) { want.relevo = state.relevo; throw new Error('relevo indisponível nesta região'); }       // a região trocou enquanto o relevo carregava
     state.relevo = true; state.exagero = exagero;
     swapMap(createReliefMap(geo, relief, { exag: exagero, proj }));
   }
@@ -131,24 +134,29 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
    */
   async function setRegion(next) {
     const req = ++regionReq;
-    ++cloudReq; ++mapReq;                                       // trocas de nuvem e de mapa em voo eram da região de antes
-    const kind = state.nuvens, wantRelief = state.relevo && next.hasRelief;
-    const [noise, relief] = await Promise.all([
-      kind === 'volume' ? once(() => noiseP, loadNoise, (p) => (noiseP = p)) : null,
-      wantRelief ? once(() => reliefP, loadRelief, (p) => (reliefP = p)).catch((e) => { console.warn('relevo indisponível, seguindo com o mapa plano', e); return null; }) : null,
-    ]);
-    if (req !== regionReq) return;
+    // espera o que o último pedido de nuvem e de relevo precisa; se chegar pedido novo no meio, confere de novo
+    let kind, wantRelief, noise = null, relief = null;
+    for (;;) {
+      kind = want.nuvens; wantRelief = want.relevo && next.hasRelief;
+      const [n, r] = await Promise.all([
+        kind === 'volume' ? once(() => noiseP, loadNoise, (p) => (noiseP = p)) : null,
+        wantRelief ? once(() => reliefP, loadRelief, (p) => (reliefP = p)).catch((e) => { console.warn('relevo indisponível, seguindo com o mapa plano', e); return null; }) : null,
+      ]);
+      if (req !== regionReq) return;
+      if (kind === want.nuvens && wantRelief === (want.relevo && next.hasRelief)) { noise = n; relief = r; break; }
+    }
     const prev = { geo, grid, proj, hasRelief, bounds, slots, slotCache };
     ({ geo, grid, proj, hasRelief } = next); bounds = sceneBounds(grid, proj); slots = slotMaker(next, bounds); slotCache = new Map();
     const built = [];
     try {
-      const nextMap = relief ? createReliefMap(geo, relief, { exag: state.exagero, proj }) : createMap(geo, { proj });
+      const nextMap = relief ? createReliefMap(geo, relief, { exag: want.exagero, proj }) : createMap(geo, { proj });
       built.push(() => nextMap.userData.dispose());
       const nextClouds = kind ? buildClouds(kind, noise) : null;
       if (nextClouds) built.push(() => nextClouds.dispose());
       const nextRain = buildRain(), nextLightning = createLightning({ grid, proj });
       built.push(() => { nextRain.dispose(); nextLightning.dispose(); });
       const nextDots = dots ? createGridDots(grid, proj) : null;
+      if (nextDots) built.push(() => { nextDots.points.geometry.dispose(); nextDots.points.material.dispose(); });
       // tudo construído: agora sai o antigo e entra o novo
       if (map) { view.scene.remove(map); map.userData.dispose(); }
       if (clouds) { view.scene.remove(...objectsOf(clouds)); clouds.dispose(); }
@@ -163,7 +171,9 @@ export function createStage({ view, region, loadRelief, loadNoise, onSwap = () =
       ({ geo, grid, proj, hasRelief, bounds, slots, slotCache } = prev);
       throw e;
     }
-    state.relevo = !!relief; state.relevoDisponivel = hasRelief;
+    ++cloudReq; ++mapReq;                                        // cargas em voo eram da região de antes; os pedidos delas já estão em `want`
+    state.nuvens = kind; state.relevo = !!relief; state.exagero = want.exagero; state.relevoDisponivel = hasRelief;
+    want.relevo = state.relevo;
     onSwap('region');
   }
 

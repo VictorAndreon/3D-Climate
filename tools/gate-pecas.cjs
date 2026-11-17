@@ -71,6 +71,30 @@ const { serve, launch, open } = require('./lib.cjs');
     await page.evaluate(async () => { __rs.stage.setRegion(__r.PE); __rs.stage.setRegion(__r.BR); await __rs.stage.idle(); });
     check('rajada: vale a última (BR)', await page.evaluate(() => __rs.stage.dots.points.geometry.attributes.position.count === __r.BR.grid.nP));
 
+    // pedidos de nuvem e de relevo correndo junto com setRegion, nas duas ordens: vale o último pedido e o estado diz a verdade
+    const kindOf = () => page.evaluate(() => ({ st: __rs.stage.state.nuvens, solid: __rs.stage.clouds.objects?.length === 4, vol: /^volume/.test(__rs.stats().cloudInfo ?? '') }));
+    await page.evaluate(async () => { __rs.stage.setClouds('volume'); __rs.stage.setRegion(__r.PE); await __rs.stage.idle(); });
+    let k = await kindOf();
+    check('nuvem pedida ANTES de setRegion não se perde (volume)', k.st === 'volume' && k.vol, JSON.stringify(k));
+    await page.evaluate(async () => { __rs.stage.setRegion(__r.BR); __rs.stage.setClouds('sprite'); await __rs.stage.idle(); });
+    k = await kindOf();
+    check('nuvem pedida DURANTE setRegion vale (sprite): estado e cena batem', k.st === 'sprite' && !k.vol && !k.solid, JSON.stringify(k));
+    await page.evaluate(async () => { __rs.stage.setRegion(__r.PE); __rs.stage.setClouds('volume'); __rs.stage.setClouds('solidas'); await __rs.stage.idle(); });
+    k = await kindOf();
+    check('rajada de nuvens durante setRegion: vale a última (sólidas)', k.st === 'solidas' && k.solid, JSON.stringify(k));
+    await page.evaluate(() => __rs.stage.setRegion(__r.PE).then(() => __rs.stage.setRegion(__r.BR)));
+    await page.evaluate(async () => { __rs.stage.setRelief(true, 12).catch(() => {}); __rs.stage.setRegion(__r.PE); await __rs.stage.idle(); });
+    check('relevo pedido sem relevo na região: não vira estado fantasma', await page.evaluate(() => !__rs.stage.state.relevo), '');
+    await page.evaluate(() => __rs.stage.setRegion(__r.RS));
+    await page.evaluate(async () => { __rs.stage.setRelief(true, 12).catch(() => {}); __rs.stage.setRegion(__r.RS); await __rs.stage.idle(); });
+    check('relevo pedido ANTES de setRegion não se perde', await page.evaluate(() => __rs.stage.state.relevo && !!__rs.stage.map.userData.heightAt), '');
+    await page.evaluate(async () => { __rs.stage.setRelief(false); __rs.stage.setRegion(__r.RS); __rs.stage.setRelief(true, 12).catch(() => {}); await __rs.stage.idle(); });
+    check('relevo pedido DURANTE setRegion vale: estado e mapa batem', await page.evaluate(() => __rs.stage.state.relevo && !!__rs.stage.map.userData.heightAt), '');
+    await page.evaluate(async () => { __rs.stage.setRelief(true, 12).catch(() => {}); __rs.stage.setRegion(__r.PE); await __rs.stage.idle(); });
+    check('relevo pedido e região sem relevo: desligado, mapa plano', await page.evaluate(() => !__rs.stage.state.relevo && !__rs.stage.map.userData.heightAt), '');
+    check('um único "land" depois das corridas', (await count('land')) === 1);
+    await page.evaluate(async () => { await __rs.stage.setRegion(__r.RS); await __rs.stage.setRelief(false); await __rs.stage.setClouds('solidas'); });
+
     await page.evaluate(async () => { for (let i = 0; i < 3; i++) { await __rs.stage.setRegion(__r.PE); await __rs.stage.setRegion(__r.BR); await __rs.stage.setRegion(__r.RS); } });
     await page.waitForTimeout(900); await frames(page);
     const b = await st();
