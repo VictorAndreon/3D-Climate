@@ -301,6 +301,28 @@ const READY = () => document.documentElement.dataset.ready === '1';
     await page.close();
   }
 
+  {
+    // pedido pela região que já está na tela durante o mergulho: o voo é cancelado e a câmera volta à vista do Brasil
+    const { page } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
+    await page.waitForTimeout(4000);                              // o voo de abertura termina
+    const view = () => page.evaluate(async () => {
+      const { framing } = await import('./src/render/scene.js');
+      const f = framing(__rs.region.bounds), c = __rs.view.camera.position, t = __rs.view.controls.target;
+      return { dist: Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z), want: f.dist, dx: t.x - f.target.x, dz: t.z - f.target.z };
+    });
+    const r = await page.evaluate(async () => {
+      const first = __rs.nav.go('SP');
+      await new Promise((res) => setTimeout(res, 400));
+      const back = await __rs.nav.go('BR');
+      return { first: await first, back };
+    });
+    await page.waitForTimeout(1500);
+    const v = await view();
+    check('mergulho cancelado: go(SP) false, go(BR) true, continua em BR', r.first === false && r.back === true && await page.evaluate(() => __rs.region.id === 'BR' && !location.search.includes('uf=') && !document.body.dataset.loading), JSON.stringify(r));
+    check('mergulho cancelado: câmera de volta ao enquadramento do Brasil', Math.abs(v.dist - v.want) < 1 && Math.abs(v.dx) < 0.5 && Math.abs(v.dz) < 0.5, JSON.stringify(v));
+    await page.close();
+  }
+
   // ---------- celular: tudo por toque ----------
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });

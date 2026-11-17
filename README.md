@@ -49,7 +49,7 @@ As nuvens baixas e médias são cachos 3D (maquete), com torre e bigorna onde h�
 
 Dá pra descer a câmera até quase rente ao chão e chegar bem perto: de lado se vê nuvem em cima, chuva no meio e solo embaixo; perto da câmera a nuvem vira neblina, então dá pra atravessá-la.
 
-**Relevo:** `?relevo=1` (ou o menu de debug) troca o topo plano por terreno de verdade (altitude da AWS Terrain Tiles, exagerada 12× para aparecer na escala da maquete). `&exagero=20` deixa a serra mais dramática. Combina com os outros parâmetros (`?relevo=1&fixture=1`).
+**Relevo (só no RS):** `?uf=RS&relevo=1` (ou o menu de debug) troca o topo plano por terreno de verdade (altitude da AWS Terrain Tiles, exagerada 12× para aparecer na escala da maquete). `&exagero=20` deixa a serra mais dramática. Combina com os outros parâmetros (`?uf=RS&relevo=1&fixture=1`).
 
 Parâmetros só para os roteiros de verificação: `t=<horas após agora>`, `cam=top|se|sw|ne|nw`, `dist=`, `look=lon,lat`.
 

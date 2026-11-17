@@ -17,7 +17,7 @@ const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
  */
 export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps, onSession = () => {} }) {
   const ufs = index.map((r) => r.id);
-  let current = null, reqId = 0, swapChain = Promise.resolve(), msgTimer = 0;
+  let current = null, reqId = 0, diving = false, swapChain = Promise.resolve(), msgTimer = 0;
   const hasCam = () => new URLSearchParams(location.search).has('cam');   // cam= fixa a vista (roteiros): sem voo de abertura
 
   function makeSession(region, data, from) {
@@ -28,10 +28,10 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
   }
 
   /** Câmera da região nova: vista padrão dela e, se couber, voo de abertura; com município, a câmera vai até ele. */
-  async function arrive(session, { mun, animate }) {
+  async function arrive(session, { mun, animate, req = reqId }) {
     let focused = false;
     if (mun && session.region.hasCities) focused = await session.focusMun(mun, animate ? 0.9 : 0);
-    if (!focused && animate && !hasCam()) view.flyIn('se');
+    if (!focused && animate && !hasCam() && req === reqId && session === current) view.flyIn('se');   // pedido superado não mexe na câmera
   }
 
   /** Primeira sessão, depois de palco e dado prontos. */
@@ -63,7 +63,7 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
       history.pushState(null, '', location.pathname + (q ? `?${q}` : '') + location.hash);
     }
     if (req === reqId) clearLoading();
-    await arrive(s, { mun, animate: !reduced() });
+    await arrive(s, { mun, animate: !reduced(), req });
     return req === reqId;                                      // superado no meio da troca: a troca terminou, mas este pedido não vale
   }
 
@@ -72,8 +72,9 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     const info = index.find((r) => r.id === id);
     if (!info) return false;
     const req = ++reqId;
-    if (id === current.region.id) {                            // já está lá: só cancela a carga pendente
+    if (id === current.region.id) {                            // já está lá: cancela a carga pendente e, se havia mergulho, desfaz
       clearLoading();
+      if (diving) { diving = false; view.controls.dispatchEvent({ type: 'start' }); view.setRegion(current.region.bounds); }   // 'start' cancela o voo; a câmera volta à vista da região
       if (mun) await current.focusMun(mun, 0.9);
       return true;
     }
@@ -93,7 +94,9 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     }
     if (region.kind === 'uf' && current.region.kind !== 'uf' && !reduced()) {      // mergulho até o centro do estado, ainda na cena do Brasil
       const b = regionBounds(info, current.region.proj);
-      await view.flyTo({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }, { dist: framing(b).dist, seconds: DIVE_S });
+      diving = true;
+      try { await view.flyTo({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }, { dist: framing(b).dist, seconds: DIVE_S }); }
+      finally { if (req === reqId) diving = false; }
       if (req !== reqId) return false;
     }
     const done = swapChain.then(() => commit(req, region, data, { mun, pop, info }));
