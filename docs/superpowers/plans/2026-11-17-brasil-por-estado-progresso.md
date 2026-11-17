@@ -1,4 +1,7 @@
-# Brasil com mergulho por estado — progresso (pausado em 2026-11-17)
+# Brasil com mergulho por estado — progresso
+
+As 6 tarefas estão concluídas. Falta a revisão final da branch inteira e a decisão de levar para a `main`.
+
 
 Plano: `docs/superpowers/plans/2026-11-17-brasil-por-estado.md`.
 Design: `docs/superpowers/specs/2026-11-17-brasil-por-estado-design.md`.
@@ -15,7 +18,7 @@ poupar tokens.
 | 3 | Região carregável e `?uf=` | concluída, revisão limpa | `3fb9b7a` |
 | 4 | Brasil como região de abertura | concluída, revisão limpa | `76eb8cc` |
 | 5 | Peças que sabem ser desligadas | concluída, revisão limpa após 1 correção | `b91191b` |
-| 6 | Entrar e sair de estado sem recarregar | em andamento | |
+| 6 | Entrar e sair de estado sem recarregar | concluída, revisão limpa após 1 correção | `74fe3e9` |
 
 ## Tarefa 3: onde parou
 
