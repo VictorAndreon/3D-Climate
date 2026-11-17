@@ -1,11 +1,10 @@
 // Clique (ou toque) no mapa seleciona o município: a peça dele sobe e o painel abre.
 // A busca por nome (selectByName) faz o mesmo. Clique fora do estado ou Esc fecha. A malha por município só é baixada quando precisa.
-import { toLonLat } from '../geo/projection.js';
 import { createMunicipioIndex } from '../data/city.js';
 
 const TAP_PX = 8;
 
-export function createCitySelect({ canvas, pick, lift, panel, municipios, onSelect = () => {} }) {
+export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, onSelect = () => {} }) {
   let index = null, loading = null, current = null;
   const centers = new Map(municipios.map(([name, lon, lat]) => [name, [lon, lat]]));
   const load = () => (loading ??= fetch('./assets/municipios.json').then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
@@ -20,7 +19,7 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, onSele
   async function selectAt(clientX, clientY) {
     const hit = pick(clientX, clientY);
     if (!hit) { close(); return; }
-    const { lon, lat } = toLonLat(hit.x, hit.z);
+    const { lon, lat } = proj.toLonLat(hit.x, hit.z);
     const idx = index ?? await load();
     const m = idx.find(lon, lat);
     if (!m) { close(); return; }

@@ -4,7 +4,6 @@
 // - O volume é marchado em resolução reduzida num alvo próprio e colado por cima da cena.
 // Mesmas regras de dado das outras nuvens: mínimo de 60% na baixa onde chove, cinza onde chove, chumbo e torre onde troveja.
 import * as THREE from 'three';
-import { toLonLat } from '../geo/projection.js';
 import { clamp } from '../util/rng.js';
 import { makeCloudNoise, makeNoiseChannel, interleave } from './cloud-noise.js';
 import { stormStrength, anvilAmount } from './cloud-shape.js';
@@ -265,7 +264,7 @@ export function startCloudNoise(size = 64, seed = 7) {
 
 const tri = () => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3)); return g; };
 
-export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNoise(64) }) {
+export function createVolumeClouds({ renderer, grid, bounds, proj, noise = makeCloudNoise(64) }) {
   // ruído 3D
   const noiseTex = new THREE.Data3DTexture(noise.data, noise.size, noise.size, noise.size);
   noiseTex.format = THREE.RGFormat; noiseTex.type = THREE.UnsignedByteType;
@@ -280,7 +279,7 @@ export function createVolumeClouds({ renderer, grid, bounds, noise = makeCloudNo
   const fieldTex = mkTex(fdata), field2Tex = mkTex(gdata);
   const flon = new Float32Array(N * N), flat = new Float32Array(N * N), inside = new Uint8Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const ll = toLonLat(minX + ((i + 0.5) / N) * (maxX - minX), minZ + ((j + 0.5) / N) * (maxZ - minZ)), q = j * N + i;
+    const ll = proj.toLonLat(minX + ((i + 0.5) / N) * (maxX - minX), minZ + ((j + 0.5) / N) * (maxZ - minZ)), q = j * N + i;
     flon[q] = ll.lon; flat[q] = ll.lat; inside[q] = grid.distCells(ll.lon, ll.lat) <= 0.72 ? 1 : 0;   // só onde há dado
   }
   function blur(arr, passes) {

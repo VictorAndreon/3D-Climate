@@ -25,7 +25,7 @@ import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
 import { normalizeResponse, buildSeries } from './data/normalize.js';
-import { toScene, toLonLat, CELL_X, CELL_Z } from './geo/projection.js';
+import { makeProjection, RS_PROJECTION } from './geo/projection.js';
 
 const params = new URLSearchParams(location.search);
 const cfg = parseConfig(location.search);                // estado inicial do menu de debug: nuvens, relevo, grade, qualidade, dados
@@ -35,13 +35,14 @@ const loadNoise = () => (noiseP ??= startCloudNoise());
 if (cfg.nuvens === 'volume') loadNoise();                 // já vai gerando enquanto o resto carrega
 const QUALITY_LEVEL = { alto: 0, medio: 1, baixo: 2 };
 
-function sceneBounds(grid) {
+function sceneBounds(grid, proj) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (let p = 0; p < grid.nP; p++) {
-    const s = toScene(grid.lons[p], grid.lats[p]);
+    const s = proj.toScene(grid.lons[p], grid.lats[p]);
     minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minZ = Math.min(minZ, s.z); maxZ = Math.max(maxZ, s.z);
   }
-  return { minX: minX - CELL_X, maxX: maxX + CELL_X, minZ: minZ - CELL_Z, maxZ: maxZ + CELL_Z };
+  const cell = proj.cell(grid.step);
+  return { minX: minX - cell.x, maxX: maxX + cell.x, minZ: minZ - cell.z, maxZ: maxZ + cell.z };
 }
 
 function fatal(msg) {
@@ -54,26 +55,27 @@ const NO_WEBGL = 'Seu navegador não conseguiu iniciar o WebGL. Recarregue a pá
 async function boot() {
   const geo = await (await fetch('./assets/rs.json')).json();
   const grid = makeGrid(geo.grid);
+  const proj = makeProjection(RS_PROJECTION);
   const canvas = document.getElementById('scene');
   let view;
-  try { view = createView(canvas); } catch { fatal(NO_WEBGL); return; }
+  try { view = createView(canvas, proj); } catch { fatal(NO_WEBGL); return; }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); view.stop(); fatal(NO_WEBGL); });
-  await run(geo, grid, view);
+  await run(geo, grid, view, proj);
 }
 
-function createView(canvas) {
+function createView(canvas, proj) {
   const look = params.get('look')?.split(',').map(Number);
-  return createScene(canvas, { cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), polar: Number(params.get('polar') ?? 0), look: look ? toScene(look[0], look[1]) : null });
+  return createScene(canvas, { cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), polar: Number(params.get('polar') ?? 0), look: look ? proj.toScene(look[0], look[1]) : null });
 }
 
-async function run(geo, grid, view) {
+async function run(geo, grid, view, proj) {
   // slots só onde há dado: dentro da célula de algum nó da grade
-  const bounds = sceneBounds(grid);
-  const accept = (x, z) => { const ll = toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
+  const bounds = sceneBounds(grid, proj);
+  const accept = (x, z) => { const ll = proj.toLonLat(x, z); return grid.distCells(ll.lon, ll.lat) <= 0.72; };
   const slots = (count, seed) => makeSlots({ ...bounds, count, seed, accept });
   let onSwap = () => {};                                     // preenchido quando céu, relógio e seleção existirem
   const stage = createStage({
-    view, geo, grid, bounds, slots, loadNoise, loadRelief: () => loadRelief('./assets/relief.bin.gz'),
+    view, geo, grid, bounds, proj, slots, loadNoise, loadRelief: () => loadRelief('./assets/relief.bin.gz'),
     onSwap: (what) => onSwap(what),
   });
   await stage.setRelief(cfg.relevo, cfg.exagero).catch((e) => console.warn('relevo indisponível, seguindo com o mapa plano', e));
@@ -83,7 +85,7 @@ async function run(geo, grid, view) {
   const data = await loadWeather({
     mode: cfg.dados, grid, gridVersion: geo.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
     deps: {
-      fetchForecast, loadCache, saveCache, syntheticSeries,
+      fetchForecast, loadCache, saveCache, syntheticSeries: (g, start) => syntheticSeries(g, start, proj),
       loadFixture: async () => buildSeries(grid, normalizeResponse(await (await fetch('./assets/fixture.json')).json())),
     },
   });
@@ -96,7 +98,7 @@ async function run(geo, grid, view) {
   // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
   new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
   createLegend(document.getElementById('legend'), document.getElementById('badge'), data.status);
-  const lift = createCityLift({ reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: (lon, lat) => stage.map.userData.heightLL?.(lon, lat) ?? 0 });
+  const lift = createCityLift({ proj, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, groundLL: (lon, lat) => stage.map.userData.heightLL?.(lon, lat) ?? 0 });
   view.scene.add(lift.group);
   const pickLand = (x, y) => {
     const { land, inside } = stage.map.userData;             // relevo: a malha cobre o retângulo, a máscara diz o que é estado
@@ -105,12 +107,12 @@ async function run(geo, grid, view) {
   };
   // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
   const tooltip = createTooltip(document.getElementById('tooltip'), {
-    canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false,
+    canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false, proj,
   });
   let citySelect = null;
   const panel = createCityPanel(document.getElementById('city'), { clock, field, onClose: () => citySelect.close() });
   citySelect = createCitySelect({
-    canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios,
+    canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios, proj,
     onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); search.setValue(m?.name ?? ''); },
   });
   // busca por nome: seleciona como um clique e leva a câmera até o município
@@ -119,13 +121,13 @@ async function run(geo, grid, view) {
     names: geo.municipios.map(([name]) => name),
     onPick: async (name) => {
       const ll = await citySelect.selectByName(name).catch((err) => { console.warn('município indisponível', err); return null; });
-      if (ll) { const s = toScene(ll[0], ll[1]); view.focusOn(s.x, s.z, { seconds: reducedMotion ? 0 : 0.9 }); }
+      if (ll) { const s = proj.toScene(ll[0], ll[1]); view.focusOn(s.x, s.z, { seconds: reducedMotion ? 0 : 0.9 }); }
     },
   });
 
   await stage.setClouds(cfg.nuvens);
-  const rain = createRain({ slots: slots(SLOT_RAIN, 201) });
-  const lightning = createLightning({ grid });
+  const rain = createRain({ slots: slots(SLOT_RAIN, 201), proj, step: grid.step });
+  const lightning = createLightning({ grid, proj });
   view.scene.add(rain.mesh, lightning.object3d);
 
   // qualidade adaptativa: desce com quadro lento, sobe só depois de 10 s folgados

@@ -2,7 +2,6 @@
 // Visibilidade por limiar: cada slot tem um limiar u; o puff aparece quando a cobertura remapeada passa de u.
 import * as THREE from 'three';
 import { disposeObject } from './dispose.js';
-import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 import { clamp, smoothstep, mulberry32 } from '../util/rng.js';
 
 export const LAYERS = [
@@ -11,7 +10,6 @@ export const LAYERS = [
   { key: 'high', y: 10, yJit: 0.3, wMin: 4.5, wMax: 7.5, flat: 0.3, alpha: 0.35, darken: 0 },
 ];
 const MAX_FLASH = 8;
-const ORBIT_AMP = 0.35 * (CELL_X + CELL_Z) / 2;   // 0,35 célula
 const MIN_COVER = 15, RAIN_MIN_LOW = 60, FADE = 0.1;
 
 /** Atlas 2x2 de puffs: aglomerado de bolhas suaves. R = relevo (claro/escuro), A = máscara. */
@@ -118,7 +116,8 @@ void main() {
   gl_FragColor = vec4(0.0, 0.01, 0.04, a);
 }`;
 
-export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) {
+export function createClouds({ slotsByLayer, proj, step, quality = { slots: 1, puff: 1 } }) {
+  const cell = proj.cell(step), ORBIT_AMP = 0.35 * (cell.x + cell.z) / 2;   // 0,35 célula
   const N = slotsByLayer.reduce((s, a) => s + a.length / 5, 0);
   // estático por slot
   const sx = new Float32Array(N), sy = new Float32Array(N), sz = new Float32Array(N);
@@ -136,7 +135,7 @@ export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) 
       sx[n] = x; sz[n] = z; sy[n] = L.y + (seed * 2 - 1) * L.yJit;
       sw[n] = L.wMin + (L.wMax - L.wMin) * size; sflat[n] = L.flat; sseed[n] = seed; salpha[n] = L.alpha;
       su[n] = arr[i * 5 + 4]; slayer[n] = li; srank[n] = i / cnt;
-      const ll = toLonLat(x, z); slon[n] = ll.lon; slat[n] = ll.lat;
+      const ll = proj.toLonLat(x, z); slon[n] = ll.lon; slat[n] = ll.lat;
       phase[n] = seed * Math.PI * 2;
     }
   });
@@ -199,7 +198,7 @@ export function createClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) 
         const cs = Math.cos(phase[i]), sn = Math.sin(phase[i]);
         const dx = ampX[i] * cs - ampZ[i] * 0.3 * sn, dz = ampZ[i] * cs + ampX[i] * 0.3 * sn;
         // escurecimento avaliado onde o puff está: nuvem escura nunca vai parar sobre célula seca
-        r = field.rain(slon[i] + (dx / CELL_X) * 0.25, slat[i] - (dz / CELL_Z) * 0.25, t);
+        r = field.rain(slon[i] + (dx / cell.x) * step, slat[i] - (dz / cell.z) * step, t);
         if (li === 0 && r > 0 && c < RAIN_MIN_LOW) c = RAIN_MIN_LOW;       // não chove de céu limpo
       }
       const cc = clamp((c - MIN_COVER) / (100 - MIN_COVER), 0, 1);

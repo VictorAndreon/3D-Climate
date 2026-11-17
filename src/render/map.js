@@ -1,25 +1,24 @@
 // Mapa base: estado extrudado como uma peça só, bordas municipais como uma única geometria de linhas, chão.
 import * as THREE from 'three';
 import { disposeObject } from './dispose.js';
-import { toScene } from '../geo/projection.js';
 
 const THICK = 1, BEVEL = 0.08;
 
-function ringToPoints(flat) {
+function ringToPoints(flat, proj) {
   const pts = [];
   for (let i = 0; i < flat.length; i += 2) {
-    const s = toScene(flat[i], flat[i + 1]);
+    const s = proj.toScene(flat[i], flat[i + 1]);
     pts.push(new THREE.Vector2(s.x, -s.z));        // forma em XY com norte para cima; rotateX leva y -> -z
   }
   return pts;
 }
 
-export function createMap(geo) {
+export function createMap(geo, { proj }) {
   const group = new THREE.Group();
 
   const shapes = geo.outline.map(([outer, ...holes]) => {
-    const shape = new THREE.Shape(ringToPoints(outer));
-    for (const h of holes) shape.holes.push(new THREE.Path(ringToPoints(h)));
+    const shape = new THREE.Shape(ringToPoints(outer, proj));
+    for (const h of holes) shape.holes.push(new THREE.Path(ringToPoints(h, proj)));
     return shape;
   });
   const body = new THREE.ExtrudeGeometry(shapes, {
@@ -39,14 +38,14 @@ export function createMap(geo) {
   const pos = [];
   for (const line of geo.borders) {
     for (let i = 0; i + 3 < line.length; i += 2) {
-      const a = toScene(line[i], line[i + 1]), b = toScene(line[i + 2], line[i + 3]);
+      const a = proj.toScene(line[i], line[i + 1]), b = proj.toScene(line[i + 2], line[i + 3]);
       pos.push(a.x, 0.02, a.z, b.x, 0.02, b.z);
     }
   }
   for (const [outer] of geo.outline) {              // contorno do estado na mesma geometria
     for (let i = 0; i < outer.length; i += 2) {
       const j = (i + 2) % outer.length;
-      const a = toScene(outer[i], outer[i + 1]), b = toScene(outer[j], outer[j + 1]);
+      const a = proj.toScene(outer[i], outer[i + 1]), b = proj.toScene(outer[j], outer[j + 1]);
       pos.push(a.x, 0.02, a.z, b.x, 0.02, b.z);
     }
   }

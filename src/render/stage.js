@@ -30,7 +30,7 @@ function combineClouds(solid, high) {
  * cada uma é chamada até dar certo uma vez e o resultado fica guardado. onSwap(what) roda depois de cada troca
  * ('map' | 'clouds' | 'dots'), para quem está de fora reaplicar céu, qualidade e dado no mesmo quadro.
  */
-export function createStage({ view, geo, grid, bounds, slots, loadRelief, loadNoise, onSwap = () => {} }) {
+export function createStage({ view, geo, grid, bounds, proj, slots, loadRelief, loadNoise, onSwap = () => {} }) {
   const state = { nuvens: null, relevo: false, exagero: 12, grade: false };
   let map = null, clouds = null, dots = null;
   let cloudReq = 0, mapReq = 0, reliefP = null, noiseP = null;
@@ -41,12 +41,12 @@ export function createStage({ view, geo, grid, bounds, slots, loadRelief, loadNo
   const slotsFor = (count, seed) => { const k = `${count}:${seed}`; if (!slotCache.has(k)) slotCache.set(k, slots(count, seed)); return slotCache.get(k); };
 
   function buildClouds(kind, noise) {
-    if (kind === 'volume') return createVolumeClouds({ renderer: view.renderer, grid, bounds, noise });
-    if (kind === 'sprite') return createClouds({ slotsByLayer: SLOT_COUNTS.clouds.map((n, i) => slotsFor(n, 101 + i)) });
+    if (kind === 'volume') return createVolumeClouds({ renderer: view.renderer, grid, bounds, proj, noise });
+    if (kind === 'sprite') return createClouds({ slotsByLayer: SLOT_COUNTS.clouds.map((n, i) => slotsFor(n, 101 + i)), proj, step: grid.step });
     return combineClouds(
-      createSolidClouds({ slotsByLayer: SLOT_COUNTS.solid.map((n, i) => slotsFor(n, 101 + i)) }),
+      createSolidClouds({ slotsByLayer: SLOT_COUNTS.solid.map((n, i) => slotsFor(n, 101 + i)), proj, step: grid.step }),
       // cirros continuam finos e translúcidos (sprite), só na camada alta
-      createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), slotsFor(SLOT_COUNTS.clouds[2], 103)] }),
+      createClouds({ slotsByLayer: [new Float32Array(0), new Float32Array(0), slotsFor(SLOT_COUNTS.clouds[2], 103)], proj, step: grid.step }),
     );
   }
   const objectsOf = (c) => c.objects ?? [c.shadow, c.mesh];
@@ -73,19 +73,19 @@ export function createStage({ view, geo, grid, bounds, slots, loadRelief, loadNo
   async function setRelief(on, exagero = state.exagero) {
     const req = ++mapReq;
     if (map && on === state.relevo && (!on || exagero === state.exagero)) { state.exagero = exagero; return; }
-    if (!on) { state.relevo = false; state.exagero = exagero; swapMap(createMap(geo)); return; }
+    if (!on) { state.relevo = false; state.exagero = exagero; swapMap(createMap(geo, { proj })); return; }
     let relief;
     try { relief = await once(() => reliefP, loadRelief, (p) => (reliefP = p)); }
-    catch (e) { if (!map && req === mapReq) swapMap(createMap(geo)); throw e; }
+    catch (e) { if (!map && req === mapReq) swapMap(createMap(geo, { proj })); throw e; }
     if (req !== mapReq) return;
     state.relevo = true; state.exagero = exagero;
-    swapMap(createReliefMap(geo, relief, { exag: exagero }));
+    swapMap(createReliefMap(geo, relief, { exag: exagero, proj }));
   }
 
   function setDots(on) {
     if (on === !!dots) return;
     if (dots) { view.scene.remove(dots.points); dots.points.geometry.dispose(); dots.points.material.dispose(); dots = null; }
-    else { dots = createGridDots(grid); view.scene.add(dots.points); }
+    else { dots = createGridDots(grid, proj); view.scene.add(dots.points); }
     state.grade = on;
     onSwap('dots');
   }

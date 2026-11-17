@@ -4,12 +4,10 @@
 // cobertura mínima de 60% na camada baixa onde chove, escurecimento por rain() onde o puff está.
 import * as THREE from 'three';
 import { disposeObject } from './dispose.js';
-import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 import { clamp, smoothstep, mulberry32 } from '../util/rng.js';
 import { SOLID_LAYERS, solidPuffShape, towerLevels } from './cloud-shape.js';
 
 const MAX_FLASH = 8;
-const ORBIT_AMP = 0.35 * (CELL_X + CELL_Z) / 2;
 const MIN_COVER = 15, RAIN_MIN_LOW = 60, FADE = 0.1;
 
 /** O icosaedro do Three.js vem sem índice (um vértice por face): junta os vértices iguais. */
@@ -140,7 +138,8 @@ void main() {
   gl_FragColor = vec4(0.0, 0.01, 0.04, a);
 }`;
 
-export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 } }) {
+export function createSolidClouds({ slotsByLayer, proj, step, quality = { slots: 1, puff: 1 } }) {
+  const cell = proj.cell(step), ORBIT_AMP = 0.35 * (cell.x + cell.z) / 2;   // 0,35 célula
   const N = slotsByLayer.reduce((s, a) => s + a.length / 5, 0);
   const sx = new Float32Array(N), sy = new Float32Array(N), sz = new Float32Array(N), ssize = new Float32Array(N), sseed = new Float32Array(N);
   const su = new Float32Array(N), slon = new Float32Array(N), slat = new Float32Array(N), slayer = new Uint8Array(N), srank = new Float32Array(N);
@@ -151,7 +150,7 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
     for (let i = 0; i < cnt; i++, n++) {
       sx[n] = arr[i * 5]; sz[n] = arr[i * 5 + 1]; ssize[n] = arr[i * 5 + 2]; sseed[n] = arr[i * 5 + 3]; su[n] = arr[i * 5 + 4];
       sy[n] = L.y + (sseed[n] * 2 - 1) * L.yJit; slayer[n] = li; srank[n] = i / cnt;
-      const ll = toLonLat(sx[n], sz[n]); slon[n] = ll.lon; slat[n] = ll.lat;
+      const ll = proj.toLonLat(sx[n], sz[n]); slon[n] = ll.lon; slat[n] = ll.lat;
       phase[n] = sseed[n] * Math.PI * 2;
     }
   });
@@ -205,7 +204,7 @@ export function createSolidClouds({ slotsByLayer, quality = { slots: 1, puff: 1 
       const cs = Math.cos(phase[i]), sn = Math.sin(phase[i]);
       const dx = ax * cs - az * 0.3 * sn, dz = az * cs + ax * 0.3 * sn;
       // chuva e trovoada avaliadas onde o puff está: nuvem escura nunca vai parar sobre célula seca
-      const plon = slon[i] + (dx / CELL_X) * 0.25, plat = slat[i] - (dz / CELL_Z) * 0.25;
+      const plon = slon[i] + (dx / cell.x) * step, plat = slat[i] - (dz / cell.z) * step;
       const r = field.rain(plon, plat, t);
       let c = li === 0 ? smp.low : smp.mid;
       if (li === 0 && r > 0 && c < RAIN_MIN_LOW) c = RAIN_MIN_LOW;

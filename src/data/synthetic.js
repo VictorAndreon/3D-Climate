@@ -2,8 +2,8 @@
 import { analyticField } from './analytic.js';
 import { createSeries } from './series.js';
 
-export function syntheticSeries(grid, startUnix, hours = 168) {
-  const a = analyticField({ startUnix, hours }), s = createSeries(grid.nP, hours, startUnix), o = {};
+export function syntheticSeries(grid, startUnix, proj, hours = 168) {
+  const a = analyticField({ startUnix, hours, proj }), s = createSeries(grid.nP, hours, startUnix), o = {};
   for (let p = 0; p < grid.nP; p++) {
     const lon = grid.lons[p], lat = grid.lats[p];
     for (let h = 0; h < hours; h++) {

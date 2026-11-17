@@ -2,15 +2,16 @@
 // desenhado se rain() > 0 na posição do próprio traço (garantia A1 no nível do traço).
 // A queda é em laço no vertex shader; a CPU só reescreve os buffers a ~10 Hz.
 import * as THREE from 'three';
-import { toLonLat, CELL_X, CELL_Z } from '../geo/projection.js';
 
 export const MAX_PER_COLUMN = 10;
 const TOP = 4.0;                 // altura da base das nuvens baixas
 export const RAIN_TOP = TOP;
 const TILT_K = 0.012;            // inclinação por km/h de vento
-const MAX_DRIFT = 0.25 * Math.min(CELL_X, CELL_Z);   // no topo, o traço se afasta da base no máximo 1/4 de célula
+/** cell = proj.cell(passo da grade). No topo, o traço se afasta da base no máximo 1/4 de célula. */
+const maxDrift = (cell) => 0.25 * Math.min(cell.x, cell.z);
 /** Inclinação do traço (por unidade de altura), na direção para onde o vento sopra, limitada. */
-export function rainTilt(u, v) {
+export function rainTilt(u, v, cell) {
+  const MAX_DRIFT = maxDrift(cell);
   let tx = u * TILT_K, tz = -v * TILT_K;
   const d = Math.hypot(tx, tz) * TOP;
   if (d > MAX_DRIFT) { tx *= MAX_DRIFT / d; tz *= MAX_DRIFT / d; }
@@ -66,7 +67,8 @@ void main() {
   gl_FragColor = vec4(uColor * a, a);
 }`;
 
-export function createRain({ slots, quality = { slots: 1 } }) {
+export function createRain({ slots, proj, step, quality = { slots: 1 } }) {
+  const cell = proj.cell(step);
   const nCol = slots.length / 5;
   const cx = new Float32Array(nCol), cz = new Float32Array(nCol), clon = new Float32Array(nCol), clat = new Float32Array(nCol), cseed = new Float32Array(nCol);
   const active = new Uint8Array(nCol);
@@ -75,10 +77,10 @@ export function createRain({ slots, quality = { slots: 1 } }) {
   const ox = new Float32Array(nCol * M), oz = new Float32Array(nCol * M), olon = new Float32Array(nCol * M), olat = new Float32Array(nCol * M);
   for (let i = 0; i < nCol; i++) {
     cx[i] = slots[i * 5]; cz[i] = slots[i * 5 + 1]; cseed[i] = slots[i * 5 + 3];
-    const ll = toLonLat(cx[i], cz[i]); clon[i] = ll.lon; clat[i] = ll.lat;
+    const ll = proj.toLonLat(cx[i], cz[i]); clon[i] = ll.lon; clat[i] = ll.lat;
     for (let j = 0; j < M; j++) {
       const ang = cseed[i] * 97 + j * 2.399963, rad = SPREAD * Math.sqrt((j + 0.5) / M);
-      const x = cx[i] + Math.cos(ang) * rad, z = cz[i] + Math.sin(ang) * rad, l2 = toLonLat(x, z);
+      const x = cx[i] + Math.cos(ang) * rad, z = cz[i] + Math.sin(ang) * rad, l2 = proj.toLonLat(x, z);
       ox[i * M + j] = x; oz[i * M + j] = z; olon[i * M + j] = l2.lon; olat[i * M + j] = l2.lat;
     }
   }
@@ -118,14 +120,14 @@ export function createRain({ slots, quality = { slots: 1 } }) {
       active[i] = 1;
       const band = rainBand(mm);
       field.sample(clon[i], clat[i], t, smp);
-      const { tx, tz } = rainTilt(smp.u, smp.v);                         // só os traços se inclinam
+      const { tx, tz } = rainTilt(smp.u, smp.v, cell);                         // só os traços se inclinam
       B[k * 4] = cx[i]; B[k * 4 + 1] = cz[i]; B[k * 4 + 2] = 1; B[k * 4 + 3] = cseed[i];
       P[k * 4] = 0.35 + 0.3 * cseed[i]; P[k * 4 + 1] = band[3]; P[k * 4 + 2] = 0; P[k * 4 + 3] = 0;
       k++;
       for (let j = 0; j < band[1]; j++) {
         const s = i * M + j;
         if (!(field.rain(olon[s], olat[s], t) > 0)) continue;             // A1 por traço: na base…
-        const top = toLonLat(ox[s] - tx * TOP, oz[s] - tz * TOP);          // …e no topo, de onde ele cai inclinado
+        const top = proj.toLonLat(ox[s] - tx * TOP, oz[s] - tz * TOP);          // …e no topo, de onde ele cai inclinado
         if (!(field.rain(top.lon, top.lat, t) > 0)) continue;
         B[k * 4] = ox[s]; B[k * 4 + 1] = oz[s]; B[k * 4 + 2] = 0; B[k * 4 + 3] = (cseed[i] * 31 + j * 0.6180339) % 1;
         P[k * 4] = band[2]; P[k * 4 + 1] = band[3]; P[k * 4 + 2] = tx; P[k * 4 + 3] = tz;

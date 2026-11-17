@@ -3,7 +3,6 @@
 // municipais coladas no terreno. Mesma interface de createMap: userData { land, borders, ground }.
 import * as THREE from 'three';
 import { disposeObject } from './dispose.js';
-import { toScene, toLonLat } from '../geo/projection.js';
 import { createGround } from './map.js';
 
 const BASE = 1;                     // fundo da peça em y = -1, como no mapa plano
@@ -20,17 +19,17 @@ function hypso(t, out) {
 }
 
 /** relief: parseRelief(); exag: exagero vertical (1 = real). */
-export function createReliefMap(geo, relief, { exag = 12 } = {}) {
+export function createReliefMap(geo, relief, { exag = 12, proj }) {
   const group = new THREE.Group();
-  const k = exag / 10000;                                   // metros -> unidades (1 unidade = 10 km)
-  const heightAt = (x, z) => { const ll = toLonLat(x, z); return relief.metersAt(ll.lon, ll.lat) * k; };
+  const k = exag / (1000 * proj.kmPerUnit);                 // metros -> unidades de cena (10 km por unidade no RS)
+  const heightAt = (x, z) => { const ll = proj.toLonLat(x, z); return relief.metersAt(ll.lon, ll.lat) * k; };
   const heightLL = (lon, lat) => relief.metersAt(lon, lat) * k;
 
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   const rings = geo.outline.map(([outer]) => {
     const pts = [];
     for (let i = 0; i < outer.length; i += 2) {
-      const s = toScene(outer[i], outer[i + 1]); pts.push(s);
+      const s = proj.toScene(outer[i], outer[i + 1]); pts.push(s);
       minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minZ = Math.min(minZ, s.z); maxZ = Math.max(maxZ, s.z);
     }
     return pts;
@@ -111,7 +110,7 @@ export function createReliefMap(geo, relief, { exag = 12 } = {}) {
     }
   };
   for (const line of geo.borders) for (let i = 0; i + 3 < line.length; i += 2) {
-    const a = toScene(line[i], line[i + 1]), b = toScene(line[i + 2], line[i + 3]);
+    const a = proj.toScene(line[i], line[i + 1]), b = proj.toScene(line[i + 2], line[i + 3]);
     drape(a.x, a.z, b.x, b.z);
   }
   for (const pts of rings) for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; drape(a.x, a.z, b.x, b.z); }

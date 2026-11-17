@@ -6,6 +6,7 @@ import { makeGrid } from '../src/data/grid.js';
 import { buildUrls } from '../src/data/fetch.js';
 import { normalizeResponse, buildSeries } from '../src/data/normalize.js';
 import { syntheticSeries, seriesToApiJson } from '../src/data/synthetic.js';
+import { makeProjection, RS_PROJECTION } from '../src/geo/projection.js';
 
 const run = promisify(execFile);
 const OUT = 'assets/fixture.json';
@@ -38,7 +39,7 @@ try { locations = await fetchAll(); buildSeries(grid, locations); }
 catch (e) {
   console.log(`API indisponível (${e.message}).`);
   kind = 'SINTÉTICA';
-  locations = seriesToApiJson(grid, syntheticSeries(grid, Math.floor(Date.now() / 3600000) * 3600));
+  locations = seriesToApiJson(grid, syntheticSeries(grid, Math.floor(Date.now() / 3600000) * 3600, makeProjection(RS_PROJECTION)));
 }
 writeFileSync(OUT, JSON.stringify(locations));
 const s = buildSeries(grid, locations);

@@ -1,7 +1,6 @@
 // Campo sintético determinístico (funções contínuas de lon, lat, t).
 // Ruído com buracos de céu limpo, uma faixa de chuva que cruza o estado de oeste a leste a cada 36 h
 // e um núcleo de trovoada dentro da faixa. Usado pelo modo demo e para gerar a fixture sintética.
-import { toScene, KM_PER_UNIT } from '../geo/projection.js';
 import { clamp, smoothstep } from '../util/rng.js';
 
 function hash3(i, j, k, seed) {
@@ -28,7 +27,7 @@ const BAND_HALF = 60;      // km: faixa de chuva com ~120 km de largura
 const CORE_R = 60;         // km: raio do núcleo de trovoada
 const PERIOD = 36;         // h para cruzar o estado
 
-export function analyticField({ startUnix, hours = 168, seed = 7 }) {
+export function analyticField({ startUnix, hours = 168, seed = 7, proj }) {
   const times = new Float64Array(hours);
   for (let i = 0; i < hours; i++) times[i] = startUnix + i * 3600;
 
@@ -46,7 +45,7 @@ export function analyticField({ startUnix, hours = 168, seed = 7 }) {
     if (b.core < CORE_R) r += 18 * (1 - (b.core / CORE_R) ** 2);
     return r < 0.15 ? 0 : r;
   }
-  const km = (lon, lat) => { const s = toScene(lon, lat); return [s.x * KM_PER_UNIT, -s.z * KM_PER_UNIT]; };
+  const km = (lon, lat) => { const s = proj.toScene(lon, lat); return [s.x * proj.kmPerUnit, -s.z * proj.kmPerUnit]; };
 
   function sample(lon, lat, t, out = {}) {
     const [xk, yk] = km(lon, lat);

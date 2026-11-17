@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyticField } from '../src/data/analytic.js';
+import { makeProjection, RS_PROJECTION } from '../src/geo/projection.js';
 import { mulberry32 } from '../src/util/rng.js';
 
 const START = 1794578400;
-const f = analyticField({ startUnix: START });
+const proj = makeProjection(RS_PROJECTION);
+const f = analyticField({ startUnix: START, proj });
 const lattice = [];
 for (let lon = -57.5; lon <= -49.75; lon += 0.25) for (let lat = -33.75; lat <= -27; lat += 0.25) lattice.push([lon, lat]);
 
 test('times de hora em hora, 168 por padrão', () => { assert.equal(f.nT, 168); assert.equal(f.times[0], START); assert.equal(f.times[1] - f.times[0], 3600); });
-test('determinístico', () => assert.deepEqual(f.sample(-53, -30, 5.3), analyticField({ startUnix: START }).sample(-53, -30, 5.3)));
+test('determinístico', () => assert.deepEqual(f.sample(-53, -30, 5.3), analyticField({ startUnix: START, proj }).sample(-53, -30, 5.3)));
 test('tem céu limpo (≥ 20% da área) e tem chuva em toda hora de 0 a 72', () => {
   for (let t = 0; t <= 72; t++) {
     let clear = 0, wet = 0;

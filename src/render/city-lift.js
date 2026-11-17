@@ -1,6 +1,5 @@
 // Município selecionado: uma peça extrudada só dele que sobe do mapa, com contorno claro no topo.
 import * as THREE from 'three';
-import { toScene } from '../geo/projection.js';
 import { inRing } from '../data/city.js';
 
 const LIFT = 0.7;                 // 7 km na escala da cena; as nuvens baixas ficam em ~4
@@ -8,7 +7,7 @@ const BASE = 1;                   // espessura do mapa (map.js): a peça nasce d
 const RISE_S = 0.45, FALL_S = 0.3;
 export const PICK_COLOR = 0xf3d27a;
 
-const ring = (flat) => { const pts = []; for (let i = 0; i < flat.length; i += 2) { const s = toScene(flat[i], flat[i + 1]); pts.push(new THREE.Vector2(s.x, -s.z)); } return pts; };
+const ring = (flat, proj) => { const pts = []; for (let i = 0; i < flat.length; i += 2) { const s = proj.toScene(flat[i], flat[i + 1]); pts.push(new THREE.Vector2(s.x, -s.z)); } return pts; };
 const easeOutBack = (k) => 1 + 2.2 * (k - 1) ** 3 + 1.2 * (k - 1) ** 2;
 
 /** Ponto mais alto do terreno dentro do município (vértices do contorno + grade 12×12 no interior). */
@@ -29,7 +28,7 @@ function highestGround(polys, groundLL) {
 }
 
 /** groundLL(lon, lat): altura do terreno em unidades de cena (relevo); sem ela o mapa é plano. */
-export function createCityLift({ reducedMotion = false, groundLL = null } = {}) {
+export function createCityLift({ reducedMotion = false, groundLL = null, proj }) {
   const group = new THREE.Group();
   group.name = 'city-lift';
   group.visible = false;
@@ -52,8 +51,8 @@ export function createCityLift({ reducedMotion = false, groundLL = null } = {}) 
   function select(polys, { instant = false } = {}) {
     dispose();
     const shapes = polys.map(([outer, ...holes]) => {
-      const s = new THREE.Shape(ring(outer));
-      for (const h of holes) s.holes.push(new THREE.Path(ring(h)));
+      const s = new THREE.Shape(ring(outer, proj));
+      for (const h of holes) s.holes.push(new THREE.Path(ring(h, proj)));
       return s;
     });
     // com relevo a peça vira uma mesa acima do ponto mais alto do município (spike: o topo não acompanha o terreno)
@@ -65,7 +64,7 @@ export function createCityLift({ reducedMotion = false, groundLL = null } = {}) 
     mesh.name = 'city';
     const pos = [];
     for (const [outer] of polys) for (let i = 0; i < outer.length; i += 2) {
-      const j = (i + 2) % outer.length, a = toScene(outer[i], outer[i + 1]), b = toScene(outer[j], outer[j + 1]);
+      const j = (i + 2) % outer.length, a = proj.toScene(outer[i], outer[i + 1]), b = proj.toScene(outer[j], outer[j + 1]);
       pos.push(a.x, g + LIFT + 0.015, a.z, b.x, g + LIFT + 0.015, b.z);
     }
     const lg = new THREE.BufferGeometry();

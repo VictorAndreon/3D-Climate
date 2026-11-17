@@ -1,5 +1,4 @@
 // Tooltip: ponteiro -> ponto no mapa -> lon/lat -> célula. Hover no desktop, toque no celular.
-import { toLonLat } from '../geo/projection.js';
 import { conditionText } from './format.js';
 
 const DEG = Math.PI / 180;
@@ -29,13 +28,13 @@ export function tooltipLines(city, c) {
 }
 
 /** pick(clientX, clientY) devolve { x, z } na cena se o ponteiro está sobre o estado, senão null. */
-export function createTooltip(el, { canvas, pick, field, clock, municipios, tapToShow = true }) {
+export function createTooltip(el, { canvas, pick, field, clock, municipios, tapToShow = true, proj }) {
   let last = null;                                   // última posição com tooltip aberto
   const row = (k, v) => `<div class="tt-row"><span>${k}</span><b>${v}</b></div>`;
   function hide() { el.hidden = true; last = null; }
   function show(clientX, clientY) {
     const hit = pick(clientX, clientY);
-    const ll = hit && toLonLat(hit.x, hit.z);
+    const ll = hit && proj.toLonLat(hit.x, hit.z);
     const cell = ll && field.cellInfo(ll.lon, ll.lat, clock.t);
     if (!cell) { hide(); return; }
     last = { clientX, clientY };

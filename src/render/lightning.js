@@ -1,11 +1,9 @@
 // Raios: só em células com storm() verdadeiro. Agenda por nó de grade, em tempo real, pausada com o play.
 // Efeito: clarão em dois pulsos nos puffs da célula + traço em zigue-zague da nuvem ao chão. Sem luz dinâmica.
 import * as THREE from 'three';
-import { toScene, CELL_X, CELL_Z } from '../geo/projection.js';
 import { mulberry32 } from '../util/rng.js';
 
 const MAX_BOLTS = 8, SEGS = 12, TOP = 4.2;
-const RADIUS = 1.5 * (CELL_X + CELL_Z) / 2;
 const DURATION = 0.19;
 /** Duplo pulso: 60 ms aceso, 40 ms apagado, 50 ms aceso, cauda curta. */
 export function flashIntensity(age) {
@@ -16,10 +14,11 @@ export function flashIntensity(age) {
   return 0.8 * (1 - (age - 0.15) / (DURATION - 0.15));
 }
 
-export function createLightning({ grid }) {
+export function createLightning({ grid, proj }) {
+  const cell = proj.cell(grid.step), RADIUS = 1.5 * (cell.x + cell.z) / 2;
   const rnd = mulberry32(2024);
   const nodeX = new Float32Array(grid.nP), nodeZ = new Float32Array(grid.nP);
-  for (let p = 0; p < grid.nP; p++) { const s = toScene(grid.lons[p], grid.lats[p]); nodeX[p] = s.x; nodeZ[p] = s.z; }
+  for (let p = 0; p < grid.nP; p++) { const s = proj.toScene(grid.lons[p], grid.lats[p]); nodeX[p] = s.x; nodeZ[p] = s.z; }
   const next = new Float64Array(grid.nP).fill(-1);      // -1 = sem trovoada
   let clock = 0;
   const bolts = [];                                      // { x, z, age, slot }
