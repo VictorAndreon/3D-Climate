@@ -12,8 +12,8 @@ poupar tokens.
 |---|---|---|---|
 | 1 | Projeção como objeto | concluída, revisão limpa | `d5e59b0` |
 | 2 | Malhas e grades de todas as regiões | concluída, revisão limpa | `2bb11c3` |
-| 3 | Região carregável e `?uf=` | fechada (`wip` + fechamento), em revisão | `3fb9b7a` |
-| 4 | Brasil como região de abertura | não iniciada | |
+| 3 | Região carregável e `?uf=` | concluída, revisão limpa | `3fb9b7a` |
+| 4 | Brasil como região de abertura | concluída, revisão limpa | `76eb8cc` |
 | 5 | Peças que sabem ser desligadas | não iniciada | |
 | 6 | Entrar e sair de estado sem recarregar | não iniciada | |
 
