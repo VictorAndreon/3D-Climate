@@ -1,6 +1,6 @@
 // Painel do município selecionado: tempo no instante da linha do tempo e meteograma da faixa visível
 // (nuvem pendurada no topo, chuva caindo dela). Clicar no meteograma move a linha do tempo.
-import { conditionText, fmtLabel, fmtDay, localHourOf } from './format.js';
+import { conditionText } from './format.js';
 import { windCardinal } from './tooltip.js';
 import { totalCover, rainOutlook } from '../data/city.js';
 import { WET_MM } from '../data/weather-field.js';
@@ -10,7 +10,8 @@ const num = (v, d = 1) => v.toFixed(d).replace('.', ',');
 const intBR = new Intl.NumberFormat('pt-BR');
 const rainLen = (mm) => RAIN_H * Math.min(1, Math.sqrt(mm / 12));      // raiz: garoa ainda aparece, 12 mm/h enche
 
-export function createCityPanel(el, { clock, field, onClose }) {
+export function createCityPanel(el, { clock, field, fmt, onClose }) {
+  const { fmtLabel, fmtDay, localHourOf } = fmt;
   el.innerHTML = `
     <header class="cp-head">
       <h2 class="cp-name"></h2>

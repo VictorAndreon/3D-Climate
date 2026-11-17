@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { near } from './helpers.mjs';
-import { skyState, localHour } from '../src/render/light.js';
+import { skyState } from '../src/render/light.js';
 
 const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 test('meio-dia: sol alto, night 0', () => { const s = skyState(12); assert(s.sunDir[1] > 0.8); assert.equal(s.night, 0); });
@@ -17,4 +17,3 @@ test('contínua, inclusive na virada 24→0', () => {
 });
 test('sunDir é unitário e nunca aponta para baixo', () => { for (let h = 0; h < 24; h += 0.5) { const d = skyState(h).sunDir; near(Math.hypot(...d), 1, 1e-6); assert(d[1] > 0.1); } });
 test('cores dentro de [0, 1]', () => { for (let h = 0; h < 24; h += 0.5) { const s = skyState(h); for (const k of ['sun', 'ambient', 'bgTop', 'bgBottom', 'cloudLit', 'cloudShade']) for (const v of s[k]) assert(v >= 0 && v <= 1); } });
-test('localHour: unix -> hora local do RS (UTC-3)', () => { near(localHour(1794578400), 11); near(localHour(1794578400 + 13.5 * 3600), 0.5); });

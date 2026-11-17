@@ -1,5 +1,5 @@
 // Legenda discreta e selo de origem dos dados.
-import { statusText, isWarning } from './format.js';
+import { statusText, isWarning, makeFormat } from './format.js';
 
 const ITEMS = [
   ['nuvem', '<svg viewBox="0 0 24 16"><path d="M6 14a4 4 0 0 1-.6-7.96A6 6 0 0 1 17 5.2 4.5 4.5 0 0 1 17.5 14z" fill="#fff"/></svg>'],
@@ -9,11 +9,11 @@ const ITEMS = [
   ['trovoada', '<svg viewBox="0 0 24 16"><path d="M13 1l-5 8h4l-2 6 6-9h-4z" fill="#ffd84a"/></svg>'],
 ];
 
-export function createLegend(legendEl, badgeEl, status) {
+export function createLegend(legendEl, badgeEl, status, fmt = makeFormat()) {
   legendEl.hidden = false;
   legendEl.innerHTML = ITEMS.map(([label, svg]) => `<div class="lg-item">${svg}<span>${label}</span></div>`).join('');
   badgeEl.hidden = false;
-  badgeEl.textContent = statusText(status);
+  badgeEl.textContent = statusText(status, fmt);
   badgeEl.classList.toggle('warn', isWarning(status));     // demo, fixture e desatualizado: aviso sempre visível
   badgeEl.dataset.kind = status.kind;
 }

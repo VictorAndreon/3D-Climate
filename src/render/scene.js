@@ -2,20 +2,34 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-export const TARGET = new THREE.Vector3(-4.5, 0, 6);                // centro do estado na cena
-const BOUNDS = { minX: -43, maxX: 34, minZ: -37, maxZ: 38 };
 const DEG = Math.PI / 180;
-const DIST = 100;
-// azimute medido a partir do sul (+z), girando para leste (+x)
+// azimute medido a partir do sul (+z), girando para leste (+x); a distância vem do enquadramento da região
 export const VIEWS = {
-  se: { az: 28 * DEG, polar: 52 * DEG, dist: DIST },
-  sw: { az: -28 * DEG, polar: 52 * DEG, dist: DIST },
-  ne: { az: 152 * DEG, polar: 52 * DEG, dist: DIST },
-  nw: { az: -152 * DEG, polar: 52 * DEG, dist: DIST },
-  top: { az: 0, polar: 0.0001, dist: 132 },
+  se: { az: 28 * DEG, polar: 52 * DEG, dist: 1 },
+  sw: { az: -28 * DEG, polar: 52 * DEG, dist: 1 },
+  ne: { az: 152 * DEG, polar: 52 * DEG, dist: 1 },
+  nw: { az: -152 * DEG, polar: 52 * DEG, dist: 1 },
+  top: { az: 0, polar: 0.0001, dist: 1.32 },
 };
 
-export function viewPosition({ az, polar, dist }, target = TARGET) {
+/**
+ * Enquadramento da câmera a partir do retângulo da região na cena (bounds = bbox projetado + 1 célula).
+ * Regra, calibrada para reproduzir o RS de antes (bounds 81,2 x 79,8; alvo (-4,5; 6); passeio -43..34 x -37..38; vista a 100):
+ *  - alvo: centro do retângulo, empurrado 7% da profundidade para o sul, para o estado não ficar alto demais na tela;
+ *  - passeio: o retângulo recuado 3% do lado maior (tira a folga de uma célula);
+ *  - distâncias: proporcionais ao lado maior (100 unidades quando ele mede 81,2, o tamanho do RS).
+ */
+const REF_SPAN = 81.2;
+export function framing({ minX, maxX, minZ, maxZ }) {
+  const w = maxX - minX, d = maxZ - minZ, span = Math.max(w, d), k = span / REF_SPAN, inset = 0.03 * span;
+  return {
+    target: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 + 0.07 * d },
+    pan: { minX: minX + inset, maxX: maxX - inset, minZ: minZ + inset, maxZ: maxZ - inset },
+    dist: 100 * k, distTop: 132 * k, maxDistance: 135 * k, distFly: 150 * k, distFlyMax: 200 * k, focusDist: 45 * k,
+  };
+}
+
+export function viewPosition({ az, polar, dist }, target) {
   return new THREE.Vector3(
     target.x + dist * Math.sin(polar) * Math.sin(az),
     target.y + dist * Math.cos(polar),
@@ -23,7 +37,9 @@ export function viewPosition({ az, polar, dist }, target = TARGET) {
   );
 }
 
-export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar = 0 } = {}) {
+/** bounds: retângulo da região na cena (veja framing); view.setRegion(bounds) troca de região sem recriar a cena. */
+export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar = 0, bounds = { minX: -40, maxX: 40, minZ: -40, maxZ: 40 } } = {}) {
+  let frame = framing(bounds), camName = cam;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
   let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
   renderer.setPixelRatio(pixelRatio);
@@ -36,28 +52,32 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   controls.dampingFactor = 0.08;
   controls.minDistance = 3;                // dá pra descer até dentro das nuvens
   controls.zoomToCursor = true;
-  controls.maxDistance = 135;
   controls.screenSpacePanning = false;
   controls.zoomSpeed = 0.8;
 
   function setView(name) {
+    camName = name;
     const v = VIEWS[name] ?? VIEWS.se;
+    controls.maxDistance = frame.maxDistance;
     // inclinação entre ~15° e ~80° acima do horizonte; `top` (só roteiros) desliga o limite
     controls.minPolarAngle = name === 'top' ? 0 : 10 * DEG;
     controls.maxPolarAngle = 88 * DEG;     // quase rente ao chão: nuvem em cima, chuva no meio, solo embaixo
-    const target = look ? new THREE.Vector3(look.x, 0, look.z) : TARGET;      // dist/look: só para os roteiros
+    const target = look ? new THREE.Vector3(look.x, 0, look.z) : new THREE.Vector3(frame.target.x, 0, frame.target.z);      // dist/look: só para os roteiros
     controls.target.copy(target);
-    camera.position.copy(viewPosition({ ...v, ...(dist ? { dist } : {}), ...(polar ? { polar: polar * DEG } : {}) }, target));
+    camera.position.copy(viewPosition({ ...v, dist: dist || v.dist * frame.dist, ...(polar ? { polar: polar * DEG } : {}) }, target));
     camera.lookAt(target);
     controls.update();
   }
   setView(cam);
+  const clampX = (x) => Math.min(frame.pan.maxX, Math.max(frame.pan.minX, x));
+  const clampZ = (z) => Math.min(frame.pan.maxZ, Math.max(frame.pan.minZ, z));
   controls.addEventListener('change', () => {       // alvo preso ao retângulo do estado
     const t = controls.target;
-    t.x = Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, t.x));
-    t.z = Math.min(BOUNDS.maxZ, Math.max(BOUNDS.minZ, t.z));
+    t.x = clampX(t.x); t.z = clampZ(t.z);
     t.y = 0;
   });
+  /** Região nova: recalcula alvo, limites de passeio e distâncias e volta à vista atual dela. */
+  function setRegion(b) { frame = framing(b); setView(camName); }
 
   function resize() {
     const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
@@ -103,8 +123,8 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     const speed = Math.max(4, camera.position.distanceTo(controls.target)) * (shift ? 1.6 : 0.6);
     move.normalize().multiplyScalar(speed * dt);
     const t = controls.target, x0 = t.x, z0 = t.z;
-    t.x = Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, t.x + move.x));
-    t.z = Math.min(BOUNDS.maxZ, Math.max(BOUNDS.minZ, t.z + move.z));
+    t.x = clampX(t.x + move.x);
+    t.z = clampZ(t.z + move.z);
     camera.position.x += t.x - x0; camera.position.z += t.z - z0;     // no limite do estado a câmera para junto
   }
 
@@ -127,13 +147,13 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
 
   // voo de abertura: de uma vista alta e afastada até a vista padrão; qualquer interação cancela
   function flyIn(name = 'se', seconds = 1.8) {
-    const to = VIEWS[name] ?? VIEWS.se, from = { az: to.az - 0.5, polar: 14 * DEG, dist: 150 };
+    const v = VIEWS[name] ?? VIEWS.se, to = { ...v, dist: v.dist * frame.dist }, from = { az: to.az - 0.5, polar: 14 * DEG, dist: frame.distFly };
     let t = 0, active = true;
     const cancel = () => { active = false; controls.removeEventListener('start', cancel); };
     controls.addEventListener('start', cancel);
     const pose = (k) => camera.position.copy(viewPosition({ az: from.az + (to.az - from.az) * k, polar: from.polar + (to.polar - from.polar) * k, dist: from.dist + (to.dist - from.dist) * k }, controls.target));
     const savedMax = controls.maxDistance;
-    controls.maxDistance = 200; pose(0); camera.lookAt(controls.target);
+    controls.maxDistance = frame.distFlyMax; pose(0); camera.lookAt(controls.target);
     frameFns.push((now, dt) => {
       if (!active) { controls.maxDistance = savedMax; return; }
       t = Math.min(1, t + dt / seconds);
@@ -143,10 +163,10 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   }
 
   // leva o alvo da câmera até (x, z) mantendo o ângulo; se estiver longe, aproxima até maxDist. Qualquer interação cancela
-  function focusOn(x, z, { maxDist = 45, seconds = 0.9 } = {}) {
+  function focusOn(x, z, { maxDist = frame.focusDist, seconds = 0.9 } = {}) {
     controls.dispatchEvent({ type: 'start' });                 // cancela voo de abertura ou foco anterior
     const from = controls.target.clone();
-    const to = new THREE.Vector3(Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x)), 0, Math.min(BOUNDS.maxZ, Math.max(BOUNDS.minZ, z)));
+    const to = new THREE.Vector3(clampX(x), 0, clampZ(z));
     const off = camera.position.clone().sub(from), d0 = off.length(), d1 = Math.min(d0, maxDist);
     let t = 0;
     const step = (now, dt) => {
@@ -172,7 +192,7 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   }
 
   return {
-    scene, camera, controls, renderer, setView, start, stop, pick, flyIn, focusOn,
+    scene, camera, controls, renderer, setView, setRegion, start, stop, pick, flyIn, focusOn,
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,

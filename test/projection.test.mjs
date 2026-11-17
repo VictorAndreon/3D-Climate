@@ -33,6 +33,6 @@ test('fitProjection: Brasil cabe em ~77 unidades', () => {
   assert.ok(Math.abs(f.lon0 - -53.2) < 1e-9 && Math.abs(f.lat0 - -14.25) < 1e-9);
   assert.ok(f.kmPerUnit > 55 && f.kmPerUnit < 62);
 });
-test('fitProjection: estado pequeno não passa de 6 km por unidade para baixo', () => {
-  assert.equal(fitProjection({ minLon: -48.3, maxLon: -47.3, minLat: -16.1, maxLat: -15.5 }).kmPerUnit, 6);
+test('fitProjection: estado pequeno não passa de 3 km por unidade para baixo', () => {
+  assert.equal(fitProjection({ minLon: -48.3, maxLon: -47.3, minLat: -16.1, maxLat: -15.5 }).kmPerUnit, 3);
 });

@@ -1,18 +1,27 @@
-// Textos: datas sempre em America/Sao_Paulo via Intl, a partir de unix; condição (WMO) e status da fonte.
-const TZ = 'America/Sao_Paulo';
-const dtf = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-function parts(unix) {
-  const o = {};
-  for (const p of dtf.formatToParts(new Date(unix * 1000))) o[p.type] = p.value;
-  o.weekday = o.weekday.replace('.', '').toLowerCase();
-  return o;
+// Textos: datas no fuso da região via Intl, a partir de unix; condição (WMO) e status da fonte.
+const DEFAULT_TZ = 'America/Sao_Paulo';
+const cache = new Map();
+
+/** Formatadores de data de um fuso (IANA): rótulo, hora, dia, data e hora local (0–23,99). */
+export function makeFormat(tz = DEFAULT_TZ) {
+  if (cache.has(tz)) return cache.get(tz);
+  const dtf = new Intl.DateTimeFormat('pt-BR', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const parts = (unix) => {
+    const o = {};
+    for (const p of dtf.formatToParts(new Date(unix * 1000))) o[p.type] = p.value;
+    o.weekday = o.weekday.replace('.', '').toLowerCase();
+    return o;
+  };
+  const fmt = {
+    fmtLabel: (unix) => { const p = parts(unix); return `${p.weekday} ${p.day}/${p.month}, ${p.hour}:${p.minute}`; },
+    fmtHM: (unix) => { const p = parts(unix); return `${p.hour}:${p.minute}`; },
+    fmtDay: (unix) => { const p = parts(unix); return `${p.weekday} ${p.day}`; },
+    fmtDate: (unix) => { const p = parts(unix); return `${p.day}/${p.month} ${p.hour}:${p.minute}`; },
+    localHourOf: (unix) => { const p = parts(unix); return Number(p.hour) + Number(p.minute) / 60; },
+  };
+  cache.set(tz, fmt);
+  return fmt;
 }
-export const fmtLabel = (unix) => { const p = parts(unix); return `${p.weekday} ${p.day}/${p.month}, ${p.hour}:${p.minute}`; };
-export const fmtHM = (unix) => { const p = parts(unix); return `${p.hour}:${p.minute}`; };
-export const fmtDay = (unix) => { const p = parts(unix); return `${p.weekday} ${p.day}`; };
-export const fmtDate = (unix) => { const p = parts(unix); return `${p.day}/${p.month} ${p.hour}:${p.minute}`; };
-/** Hora local (0–23,99) em São Paulo. */
-export const localHourOf = (unix) => { const p = parts(unix); return Number(p.hour) + Number(p.minute) / 60; };
 
 export function conditionText(code) {
   if (code === 0) return 'céu limpo';
@@ -33,7 +42,9 @@ export function conditionText(code) {
   return '—';
 }
 
-export function statusText(status) {
+/** fmt: formatadores da região (padrão: São Paulo). */
+export function statusText(status, fmt = makeFormat()) {
+  const { fmtHM, fmtDate } = fmt;
   switch (status.kind) {
     case 'live': case 'cache': return `dados de ${fmtHM(status.fetchedAt)} · Open-Meteo`;
     case 'stale': return `dados de ${fmtHM(status.fetchedAt)} (desatualizados)`;

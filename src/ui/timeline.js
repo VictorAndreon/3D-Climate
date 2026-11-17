@@ -1,10 +1,11 @@
 // Linha do tempo (rodapé): play/pause, velocidades, rótulo, trilho com marcas de dia, marcador "agora",
 // faixa de horas com chuva, botão 72 h / 7 dias, scrub por arrasto e teclado.
-import { fmtLabel, fmtDay, localHourOf } from './format.js';
+
 
 const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-export function createTimeline(el, { clock, times, rainByHour }) {
+export function createTimeline(el, { clock, times, rainByHour, fmt }) {
+  const { fmtLabel, fmtDay, localHourOf } = fmt;
   el.hidden = false;
   el.innerHTML = '';
   const controls = h('div', 'tl-controls');

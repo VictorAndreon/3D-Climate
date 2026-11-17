@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtLabel, fmtHM, fmtDay, fmtDate, conditionText, statusText } from '../src/ui/format.js';
+import { makeFormat, conditionText, statusText } from '../src/ui/format.js';
+import { near } from './helpers.mjs';
+
+const { fmtLabel, fmtHM, fmtDay, fmtDate, localHourOf } = makeFormat('America/Sao_Paulo');
 
 test('fmtLabel', () => assert.equal(fmtLabel(1794578400), 'sex 13/11, 11:00'));          // 2026-11-13T14:00Z
 test('fmtLabel vira o dia no fuso de São Paulo', () => assert.equal(fmtLabel(1794538800 - 3600), 'qui 12/11, 23:00'));
@@ -21,4 +24,17 @@ test('conditionText', () => {
   assert.equal(conditionText(0), 'céu limpo'); assert.equal(conditionText(3), 'nublado'); assert.equal(conditionText(48), 'nevoeiro');
   assert.equal(conditionText(53), 'garoa'); assert.equal(conditionText(63), 'chuva moderada'); assert.equal(conditionText(81), 'pancadas de chuva');
   assert.equal(conditionText(95), 'trovoada'); assert.equal(conditionText(99), 'trovoada com granizo'); assert.equal(conditionText(42), '—');
+});
+
+test('localHourOf: unix -> hora local (UTC-3)', () => { near(localHourOf(1794578400), 11); near(localHourOf(1794578400 + 13.5 * 3600), 0.5); });
+test('fuso por região: Manaus está 1 h atrás de São Paulo, Rio Branco 2 h', () => {
+  const unix = Date.UTC(2026, 10, 17, 15, 0) / 1000;
+  assert.equal(makeFormat('America/Sao_Paulo').fmtHM(unix), '12:00');
+  assert.equal(makeFormat('America/Manaus').fmtHM(unix), '11:00');
+  assert.equal(makeFormat('America/Rio_Branco').fmtHM(unix), '10:00');
+  assert.equal(makeFormat('America/Manaus').localHourOf(unix), 11);
+});
+test('statusText usa o fuso do formato recebido', () => {
+  const unix = Date.UTC(2026, 10, 17, 15, 0) / 1000;
+  assert.equal(statusText({ kind: 'live', fetchedAt: unix }, makeFormat('America/Manaus')), 'dados de 11:00 · Open-Meteo');
 });

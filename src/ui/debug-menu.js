@@ -29,9 +29,11 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
   /** Controles espelham a configuração. */
   function sync() {
     for (const name of ['nuvens', 'qualidade', 'dados']) for (const r of el.querySelectorAll(`input[name=${name}]`)) r.checked = r.value === cfg[name];
-    $('input[name=relevo]').checked = cfg.relevo;
+    const relevoOk = stage.state.relevoDisponivel;                  // fora do RS não há relevo: controle desabilitado
+    $('input[name=relevo]').checked = cfg.relevo; $('input[name=relevo]').disabled = !relevoOk;
+    $('input[name=relevo]').title = relevoOk ? '' : 'Relevo disponível só no Rio Grande do Sul';
     $('input[name=grade]').checked = cfg.grade;
-    exag.value = String(cfg.exagero); exag.disabled = !cfg.relevo; exagOut.textContent = `${cfg.exagero}×`;
+    exag.value = String(cfg.exagero); exag.disabled = !cfg.relevo || !relevoOk; exagOut.textContent = `${cfg.exagero}×`;
   }
   const query = () => writeConfig(location.search, cfg);
   const urlFor = (q) => location.pathname + (q ? `?${q}` : '') + location.hash;

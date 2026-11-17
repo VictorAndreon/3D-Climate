@@ -1,13 +1,13 @@
 // Clique (ou toque) no mapa seleciona o município: a peça dele sobe e o painel abre.
-// A busca por nome (selectByName) faz o mesmo. Clique fora do estado ou Esc fecha. A malha por município só é baixada quando precisa.
+// A busca por nome (selectByName) e o código IBGE (selectById, ?mun=) fazem o mesmo. Clique fora do estado ou Esc fecha. A malha por município só é baixada quando precisa.
 import { createMunicipioIndex } from '../data/city.js';
 
 const TAP_PX = 8;
 
-export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, onSelect = () => {} }) {
+export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, munUrl, onSelect = () => {} }) {
   let index = null, loading = null, current = null;
   const centers = new Map(municipios.map(([name, lon, lat]) => [name, [lon, lat]]));
-  const load = () => (loading ??= fetch('./assets/regions/RS-mun.json').then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
+  const load = () => (loading ??= fetch(munUrl).then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
 
   function close() {
     if (!current) return;
@@ -42,6 +42,14 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
     return ll;
   }
 
+  /** Seleciona pelo código IBGE; código desconhecido não faz nada (null). */
+  async function selectById(id) {
+    const m = (index ?? await load()).list.find((x) => x.id === String(id)), ll = m && centers.get(m.name);
+    if (!m || !ll) return null;
+    show(m, ll);
+    return ll;
+  }
+
   let down = null;
   canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; });
   canvas.addEventListener('pointerup', (e) => {
@@ -58,5 +66,5 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
   /** O mapa de baixo trocou (relevo): refaz a peça levantada na altura nova, sem fechar nada. */
   function relift() { if (current) lift.select(current.polys, { instant: true }); }
 
-  return { close, selectAt, selectByName, relift, get current() { return current; } };
+  return { close, selectAt, selectByName, selectById, relift, get current() { return current; } };
 }

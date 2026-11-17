@@ -18,11 +18,11 @@ export function makeProjection({ lon0, lat0, kmPerUnit }) {
   };
 }
 
-/** Projeção que enquadra o retângulo em ~targetUnits unidades (mínimo de 6 km por unidade). */
+/** Projeção que enquadra o retângulo em ~targetUnits unidades (mínimo de 3 km por unidade). */
 export function fitProjection({ minLon, maxLon, minLat, maxLat }, targetUnits = 77) {
   const lon0 = (minLon + maxLon) / 2, lat0 = (minLat + maxLat) / 2;
   const widthKm = (maxLon - minLon) * Math.cos((lat0 * Math.PI) / 180) * KM_PER_DEG;
   const heightKm = (maxLat - minLat) * KM_PER_DEG;
-  const kmPerUnit = Math.round(Math.max(6, Math.max(widthKm, heightKm) / targetUnits) * 10) / 10;
+  const kmPerUnit = Math.round(Math.max(3, Math.max(widthKm, heightKm) / targetUnits) * 10) / 10;
   return { lon0, lat0, kmPerUnit };
 }

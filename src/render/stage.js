@@ -26,12 +26,13 @@ function combineClouds(solid, high) {
 }
 
 /**
+ * hasRelief: a região tem relevo; sem ele setRelief(true) rejeita e o mapa fica plano.
  * slots(count, seed): posições de nuvem dentro da área com dado. loadRelief() e loadNoise() devolvem promessas;
  * cada uma é chamada até dar certo uma vez e o resultado fica guardado. onSwap(what) roda depois de cada troca
  * ('map' | 'clouds' | 'dots'), para quem está de fora reaplicar céu, qualidade e dado no mesmo quadro.
  */
-export function createStage({ view, geo, grid, bounds, proj, slots, loadRelief, loadNoise, onSwap = () => {} }) {
-  const state = { nuvens: null, relevo: false, exagero: 12, grade: false };
+export function createStage({ view, geo, grid, bounds, proj, slots, loadRelief, loadNoise, hasRelief = false, onSwap = () => {} }) {
+  const state = { nuvens: null, relevo: false, exagero: 12, grade: false, relevoDisponivel: hasRelief };      // relevo só onde há .bin (RS)
   let map = null, clouds = null, dots = null;
   let cloudReq = 0, mapReq = 0, reliefP = null, noiseP = null;
   const pending = new Set();
@@ -73,6 +74,7 @@ export function createStage({ view, geo, grid, bounds, proj, slots, loadRelief, 
   async function setRelief(on, exagero = state.exagero) {
     const req = ++mapReq;
     if (map && on === state.relevo && (!on || exagero === state.exagero)) { state.exagero = exagero; return; }
+    if (on && !hasRelief) { if (!map) swapMap(createMap(geo, { proj })); throw new Error('relevo indisponível nesta região'); }
     if (!on) { state.relevo = false; state.exagero = exagero; swapMap(createMap(geo, { proj })); return; }
     let relief;
     try { relief = await once(() => reliefP, loadRelief, (p) => (reliefP = p)); }

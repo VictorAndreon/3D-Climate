@@ -11,9 +11,6 @@ const C = {
   cloudShade: { day: [0.62, 0.69, 0.82], warm: [0.5, 0.42, 0.55], night: [0.2, 0.25, 0.4] },
 };
 
-/** Hora local do RS (UTC-3 fixo) a partir de unix em segundos. */
-export const localHour = (unix) => (((unix / 3600 - 3) % 24) + 24) % 24;
-
 export function skyState(hour) {
   const a = (Math.PI * (hour - 6)) / 12;
   const e = Math.sin(a);                                   // "elevação": 1 ao meio-dia, -1 à meia-noite
