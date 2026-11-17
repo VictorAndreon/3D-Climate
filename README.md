@@ -1,7 +1,9 @@
-# RS Tempo 3D
+# Tempo 3D Brasil
 
-Maquete 3D do Rio Grande do Sul que mostra a previsão do tempo do Open-Meteo como nuvens, chuva e raios
-estilizados, com linha do tempo. Projeto lúdico, de uso pessoal. Não é ferramenta meteorológica.
+Maquete 3D do Brasil e de cada um dos 27 estados que mostra a previsão do tempo do Open-Meteo como nuvens, chuva e raios
+estilizados, com linha do tempo. O site abre no Brasil (grade de 1°); clicar num estado, buscar por ele ou por um município
+leva a câmera até lá e abre a vista detalhada do estado (grade de 0,25°), sem recarregar a página: a hora da linha do tempo,
+o play e a velocidade continuam, e voltar/avançar do navegador funciona. Projeto lúdico, de uso pessoal. Não é ferramenta meteorológica.
 
 O design está em [`DESIGN.md`](DESIGN.md) e o plano de implementação em
 [`docs/superpowers/plans/2026-11-13-rs-tempo-3d.md`](docs/superpowers/plans/2026-11-13-rs-tempo-3d.md).
@@ -18,10 +20,14 @@ Depois abra `http://localhost:8080/`. Só caminhos relativos, então funciona ig
 
 | URL | O que faz |
 |---|---|
-| `/` | previsão real (Open-Meteo), com cache de 1 h no navegador |
+| `/` | o Brasil, com previsão real (Open-Meteo) e cache de 1 h no navegador por região |
+| `/?uf=SP` | abre direto no estado (sigla de 2 letras; `uf=BR` ou sem `uf` é o Brasil). `uf=RS` é o único com relevo |
+| `/?uf=SP&mun=3550308` | abre o estado com esse município (código IBGE) selecionado e a câmera nele; código desconhecido é ignorado |
 | `/?demo=1` | campo sintético determinístico, sem rede |
-| `/?fixture=1` | carrega `assets/fixture.json` pelo mesmo parsing da API |
+| `/?uf=RS&fixture=1` | carrega `assets/fixture.json` (gravada só do RS) pelo mesmo parsing da API; em outra região vale o dado ao vivo |
 | `/?debug=1` | abre com o menu de debug aberto e os pontos da grade ligados (coloridos pelo dado bruto: cinza = seco, azul = chuva, amarelo = trovoada) |
+
+**Visão Brasil e estados:** na visão Brasil o ponteiro mostra o nome do estado; clicar (ou tocar) nele mergulha a câmera até o estado e troca a cena por ela. O botão `← Brasil` (ou o voltar do navegador) retorna. A busca (tecla `/`) é nacional: lista os 27 estados e os municípios de todo o país (a lista de municípios é baixada no primeiro foco); escolher um município entra no estado dele com o painel aberto. Os parâmetros do menu de debug valem nas duas visões e são preservados nas trocas; se a previsão do estado não carregar, o Brasil continua na tela com um aviso. Com `prefers-reduced-motion` a troca é um corte seco.
 
 **Menu de debug:** o botão ⚙ no canto superior direito abre um menu com fps, tempo de quadro, draw calls e qualidade, e deixa trocar na hora, sem perder câmera nem horário: nuvens (sólidas, volume, sprite), relevo e exagero, pontos da grade e qualidade (automática ou travada). Trocar a fonte de dados (ao vivo, demo, fixture) recarrega a página. Cada ajuste reescreve a URL, então o link da barra de endereço (ou o botão "copiar link") reproduz o que está na tela.
 
@@ -69,10 +75,25 @@ node tools/gate-final.cjs
 node tools/gate-debug.cjs
 ```
 
-- `npm test`: 212 testes dos módulos puros (`node --test`; precisa de `npm install` antes, um dos testes importa o `three`), incluindo a propriedade A1 com 20.000 amostras.
+```bash
+node tools/gate-regiao.cjs
+```
+
+```bash
+node tools/gate-brasil.cjs
+```
+
+```bash
+node tools/gate-pecas.cjs
+```
+
+- `npm test`: 252 testes dos módulos puros (`node --test`; precisa de `npm install` antes, um dos testes importa o `three`), incluindo a propriedade A1 com 20.000 amostras.
 - `gate-rain`: visto de cima, em 5 horários, a base e o topo de todo traço de chuva desenhado ficam em célula cujo dado bruto é molhado.
 - `gate-ui`: play, scrub, velocidade, teclado, tooltip, selo, celular.
 - `gate-debug`: o menu troca nuvens, relevo, exagero, grade e qualidade no lugar, mantém câmera, horário e município, não vaza memória, reflete e reescreve a URL, e não cobre busca, painel nem linha do tempo.
+- `gate-regiao`: cada região abre com a grade, o fuso e o contorno certos (`uf=`, `mun=`, fixture só no RS, API fora do ar).
+- `gate-brasil`: o Brasil como abertura (tooltip, clique, busca nacional) e a troca no lugar: sem recarga, hora e play mantidos, histórico, rajada, menu de debug preservado, sem vazar ouvinte nem memória de GPU, falha ao entrar não troca, movimento reduzido.
+- `gate-pecas`: o `signal` das interfaces remove os ouvintes de verdade e o palco troca a região inteira sem duplicar objetos nem vazar memória.
 - `gate-final`: caminho ao vivo + cache com a API interceptada (11 requisições na primeira carga, zero na segunda, primeiro quadro, fallbacks, nenhum host externo além da API).
 
 Os roteiros usam o Chromium/Playwright já instalados no ambiente e rodam sem rede.
@@ -95,8 +116,8 @@ npm run geo
 npm run fixture
 ```
 
-`vendor` copia o Three.js do `node_modules` para `vendor/three/`. `geo` baixa a malha municipal e gera
-`assets/rs.json` e `assets/municipios.json`. `node tools/build-relief.mjs` baixa a altitude e gera `assets/relief.bin.gz` (spike do relevo). `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
+`vendor` copia o Three.js do `node_modules` para `vendor/three/`. `geo` (`npm run geo`) baixa a malha municipal do IBGE e regenera as malhas
+de todas as regiões em `assets/regions/` (Brasil, os 27 estados e, por estado, a malha de municípios, mais o `index.json` e a busca nacional `busca.json`). `node tools/build-relief.mjs` baixa a altitude e gera `assets/relief.bin.gz` (spike do relevo). `fixture` grava uma resposta real da API em `assets/fixture.json` (ou a sintética, se a API falhar).
 
 ## O que só você confirma no seu navegador
 
@@ -122,7 +143,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 **Ambiente (medido em 13/11/2026)**
 - Three.js fixado em 0.187.0 (última no npm), vendorizado: `three.module.js`, `three.core.js` e `OrbitControls.js`.
 - A malha tem 496 municípios (o design dizia 497) e a grade tem 546 pontos: 401 dentro do estado + borda de 1 célula (o design esperava 300–400).
-- `assets/rs.json` com simplificação de 40% no mapshaper: 229 KB.
+- `assets/regions/RS.json` com simplificação de 40% no mapshaper: 229 KB.
 - `assets/fixture.json` é uma **resposta real** do Open-Meteo gravada em 13/11/2026 às 12:00 (546 pontos × 168 h, 2,9 MB; tem chuva nas 168 h e trovoada em 118). A primeira tentativa de gravar falhou com `Daily API request limit exceeded`; a segunda, uma hora depois, passou.
 - A API devolve a coordenada ajustada à grade do modelo; os locais são mapeados para os pontos **pela ordem do pedido**.
 - Erro da API (HTTP 400/429 ou `{"error":true}`), lote incompleto e série torta contam como falha de rede.
@@ -161,6 +182,6 @@ Desvios e escolhas feitas onde o design deixava margem.
 - No celular a legenda vira uma fileira de ícones acima do rodapé.
 - Relevo (spike, `?relevo=1`): AWS Terrain Tiles (Terrarium, z8, ~550 m/px) reduzidos por média para 512×500 (~1,6 km/px) em `assets/relief.bin.gz` (260 KB, gzip, descomprimido no navegador com `DecompressionStream`). Mar e Lagoa dos Patos viram nível do mar. Malha de ~300×290 vértices recortada no contorno por máscara (alphaTest), paredes laterais seguindo a altitude da borda (a divisa com SC no cânion do Rio Pelotas vira um paredão), bordas municipais coladas no terreno, cor por altitude. Exagero 12×: a serra fica em ~1,7 unidade, abaixo das nuvens baixas (~4).
 - O que o spike **não** adapta ainda: chuva, respingos e raio continuam terminando em y = 0 (somem dentro dos morros), a sombra das nuvens continua num plano (some na serra), e o município levantado vira uma mesa plana acima do ponto mais alto dele em vez de acompanhar o terreno.
-- Município selecionado: polígonos por município em `assets/municipios.json` (373 KB, mesma simplificação das bordas), fora do `rs.json` para não pesar no primeiro quadro; é baixado com o navegador ocioso ou no primeiro clique. Área calculada da malha original (aprox., ±1% do IBGE).
+- Município selecionado: polígonos por município em `assets/regions/RS-mun.json` (373 KB, mesma simplificação das bordas), fora do `RS.json` para não pesar no primeiro quadro; é baixado com o navegador ocioso ou no primeiro clique. Área calculada da malha original (aprox., ±1% do IBGE).
 - O painel mostra a previsão do nó da grade mais próximo do centroide; município grande (Alegrete) cobre várias células e o tooltip em outra ponta pode discordar.
 - No toque o painel do município substitui o tooltip (tem os mesmos dados); no desktop o hover continua abrindo o tooltip. O contorno dourado tem uma cópia sem teste de profundidade para aparecer através das nuvens.

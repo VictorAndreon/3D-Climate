@@ -1,6 +1,8 @@
 // Configuração do menu de debug <-> query string. Módulo puro.
 // A URL é o estado inicial; o menu reescreve a URL a cada ajuste, preservando o que não conhece (cam, t, look…).
-export const DEFAULTS = { debug: false, nuvens: 'solidas', relevo: false, exagero: 12, grade: false, qualidade: 'auto', dados: 'live', uf: 'RS', mun: null };
+/** Região de quando a URL não diz (o Brasil): a única fonte, usada por main, menu de debug e navegação. */
+export const DEFAULT_REGION = 'BR';
+export const DEFAULTS = { debug: false, nuvens: 'solidas', relevo: false, exagero: 12, grade: false, qualidade: 'auto', dados: 'live', uf: DEFAULT_REGION, mun: null };
 export const EXAGERO = { min: 1, max: 40, step: 1 };
 const NUVENS = ['solidas', 'volume', 'sprite'], QUALIDADE = ['auto', 'alto', 'medio', 'baixo'];
 const KNOWN = ['debug', 'nuvens', 'relevo', 'exagero', 'grade', 'qualidade', 'demo', 'fixture', 'uf', 'mun'];
@@ -9,7 +11,7 @@ const KNOWN = ['debug', 'nuvens', 'relevo', 'exagero', 'grade', 'qualidade', 'de
  * ufs: siglas aceitas em ?uf= (vazio = nenhuma, cai no padrão); defaultUf: região de quando a URL não diz.
  * mun: código IBGE do município a abrir selecionado (só texto; quem usa decide se existe).
  */
-export function parseConfig(search, { ufs = [], defaultUf = DEFAULTS.uf } = {}) {
+export function parseConfig(search, { ufs = [], defaultUf = DEFAULT_REGION } = {}) {
   const p = new URLSearchParams(search);
   const asked = (p.get('uf') ?? '').toUpperCase();
   const uf = ufs.includes(asked) ? asked : defaultUf;
@@ -29,7 +31,7 @@ export function parseConfig(search, { ufs = [], defaultUf = DEFAULTS.uf } = {}) 
 }
 
 /** Query (sem "?") com os parâmetros desconhecidos preservados e os do menu regravados, omitindo os padrões. `mun` nunca é gravado. */
-export function writeConfig(search, cfg, { defaultUf = DEFAULTS.uf } = {}) {
+export function writeConfig(search, cfg, { defaultUf = DEFAULT_REGION } = {}) {
   const p = new URLSearchParams(search);
   for (const k of KNOWN) p.delete(k);
   if (cfg.debug) p.set('debug', '1');

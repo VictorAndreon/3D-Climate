@@ -17,17 +17,19 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
   }
 
   async function selectAt(clientX, clientY) {
+    if (signal?.aborted) return;
     const hit = pick(clientX, clientY);
     if (!hit) { close(); return; }
     const { lon, lat } = proj.toLonLat(hit.x, hit.z);
     const idx = index ?? await load();
+    if (signal?.aborted) return;                               // a sessão acabou durante o download: nada de peça nem painel
     const m = idx.find(lon, lat);
     if (!m) { close(); return; }
     show(m, [lon, lat]);
   }
 
   function show(m, fallbackLL) {
-    if (current === m) return;
+    if (signal?.aborted || current === m) return;
     current = m;
     lift.select(m.polys);
     panel.show(m, centers.get(m.name) ?? fallbackLL);
@@ -36,7 +38,9 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
 
   /** Seleciona pelo nome (busca), como se o município tivesse sido clicado. Devolve [lon, lat] do centro, ou null. */
   async function selectByName(name) {
-    const m = (index ?? await load()).byName(name), ll = centers.get(name);
+    const idx = index ?? await load();
+    if (signal?.aborted) return null;
+    const m = idx.byName(name), ll = centers.get(name);
     if (!m || !ll) return null;
     show(m, ll);
     return ll;
@@ -44,7 +48,9 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
 
   /** Seleciona pelo código IBGE; código desconhecido não faz nada (null). */
   async function selectById(id) {
-    const m = (index ?? await load()).list.find((x) => x.id === String(id)), ll = m && centers.get(m.name);
+    const idx = index ?? await load();
+    if (signal?.aborted) return null;
+    const m = idx.list.find((x) => x.id === String(id)), ll = m && centers.get(m.name);
     if (!m || !ll) return null;
     show(m, ll);
     return ll;
@@ -61,7 +67,9 @@ export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, 
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); }, { signal });
 
   // adianta o download quando o navegador estiver ocioso, para o primeiro clique ser imediato
-  (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500)))(() => load().catch(() => { loading = null; }));
+  // (sessão encerrada antes de o navegador ficar ocioso: não baixa nada)
+  const idle = (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500)))(() => { if (!signal?.aborted) load().catch(() => { loading = null; }); });
+  signal?.addEventListener('abort', () => (window.cancelIdleCallback ?? clearTimeout)(idle), { once: true });
 
   /** O mapa de baixo trocou (relevo): refaz a peça levantada na altura nova, sem fechar nada. */
   function relift() { if (current) lift.select(current.polys, { instant: true }); }

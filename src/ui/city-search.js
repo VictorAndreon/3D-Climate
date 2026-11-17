@@ -26,7 +26,7 @@ export function searchPlaces(items, query, limit = 8) {
   return out.slice(0, limit).map(({ rank, ...item }) => item);
 }
 
-/** items: veja searchPlaces; onPick(item); onFirstFocus: chamado uma vez no primeiro foco (busca nacional baixa a lista aí).
+/** items: veja searchPlaces; onPick(item); onFirstFocus: chamado no primeiro foco (busca nacional baixa a lista aí); se devolver promessa que rejeita, o foco seguinte chama de novo.
  *  signal: ao abortar, os ouvintes (inclusive o "/" na janela) saem; o conteúdo de `el` fica para quem recria. */
 export function createCitySearch(el, { items, onPick, placeholder = 'Buscar município…', onFirstFocus = null, signal }) {
   el.innerHTML = `
@@ -60,7 +60,8 @@ export function createCitySearch(el, { items, onPick, placeholder = 'Buscar muni
 
   input.addEventListener('input', search, { signal });
   let focused = false;
-  input.addEventListener('focus', () => { input.select(); if (!focused) { focused = true; onFirstFocus?.(); } }, { signal });
+  // onFirstFocus pode devolver uma promessa; se ela rejeitar (download falhou), o próximo foco tenta de novo
+  input.addEventListener('focus', () => { input.select(); if (!focused) { focused = true; Promise.resolve(onFirstFocus?.()).catch(() => { focused = false; }); } }, { signal });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!results.length) return;

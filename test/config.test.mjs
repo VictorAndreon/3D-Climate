@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, parseConfig, writeConfig } from '../src/ui/config.js';
+import { DEFAULT_REGION, DEFAULTS, parseConfig, writeConfig } from '../src/ui/config.js';
 
 test('URL vazia dá os padrões', () => assert.deepEqual(parseConfig(''), DEFAULTS));
 test('lê cada parâmetro', () => assert.deepEqual(
-  parseConfig('?debug=1&nuvens=volume&relevo=1&exagero=20&grade=0&qualidade=medio&fixture=1'),
+  parseConfig('?debug=1&nuvens=volume&relevo=1&exagero=20&grade=0&qualidade=medio&fixture=1&uf=RS', { ufs: ['RS'] }),
   { debug: true, nuvens: 'volume', relevo: true, exagero: 20, grade: false, qualidade: 'medio', dados: 'fixture', uf: 'RS', mun: null }));
 test('debug=1 liga a grade quando grade não vem na URL', () => assert.equal(parseConfig('?debug=1').grade, true));
 test('grade=1 sem debug liga só a grade', () => { const c = parseConfig('?grade=1'); assert.equal(c.grade, true); assert.equal(c.debug, false); });
@@ -38,21 +38,27 @@ test('ida e volta é estável', () => {
 const UFS = ['RS', 'SP', 'AM'];
 test('uf: aceita minúscula, desconhecido cai no padrão', () => {
   assert.equal(parseConfig('?uf=sp', { ufs: UFS }).uf, 'SP');
-  assert.equal(parseConfig('?uf=XX', { ufs: UFS }).uf, 'RS');
-  assert.equal(parseConfig('?uf=', { ufs: UFS }).uf, 'RS');
-  assert.equal(parseConfig('', { ufs: UFS, defaultUf: 'BR' }).uf, 'BR');
+  assert.equal(parseConfig('?uf=XX', { ufs: UFS }).uf, 'BR');
+  assert.equal(parseConfig('?uf=', { ufs: UFS }).uf, 'BR');
+  assert.equal(parseConfig('', { ufs: UFS, defaultUf: 'RS' }).uf, 'RS');
 });
-test('sem a lista de ufs, uf cai no padrão (chamadas antigas)', () => assert.equal(parseConfig('?uf=SP').uf, 'RS'));
+test('a região padrão é uma constante só: o Brasil', () => {
+  assert.equal(DEFAULT_REGION, 'BR');
+  assert.equal(DEFAULTS.uf, DEFAULT_REGION);
+});
+test('sem a lista de ufs, uf cai no padrão (chamadas antigas)', () => assert.equal(parseConfig('?uf=SP').uf, DEFAULT_REGION));
 test('uf vai para a URL só quando difere do padrão; mun nunca vai', () => {
   const c = { ...parseConfig('?uf=SP&mun=3550308', { ufs: UFS }) };
   assert.equal(c.mun, '3550308');
   assert.equal(writeConfig('?uf=SP&mun=3550308', c), 'uf=SP');
-  assert.equal(writeConfig('?uf=RS', parseConfig('?uf=RS', { ufs: UFS })), '');
+  assert.equal(writeConfig('?uf=RS', parseConfig('?uf=RS', { ufs: UFS })), 'uf=RS');
+  assert.equal(writeConfig('?uf=BR', parseConfig('?uf=BR', { ufs: [...UFS, 'BR'] })), '');
   assert.equal(writeConfig('', parseConfig('?uf=RS', { ufs: UFS, defaultUf: 'BR' }), { defaultUf: 'BR' }), 'uf=RS');
 });
 test('fixture só vale no RS', () => {
   assert.equal(parseConfig('?fixture=1&uf=SP', { ufs: UFS }).dados, 'live');
-  assert.equal(parseConfig('?fixture=1', { ufs: UFS }).dados, 'fixture');
+  assert.equal(parseConfig('?fixture=1&uf=RS', { ufs: UFS }).dados, 'fixture');
+  assert.equal(parseConfig('?fixture=1', { ufs: UFS }).dados, 'live');
   assert.equal(parseConfig('?demo=1&uf=SP', { ufs: UFS }).dados, 'demo');
 });
 test('mun vazio vira null', () => assert.equal(parseConfig('?mun=').mun, null));

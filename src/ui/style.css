@@ -120,6 +120,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradi
   body.in-uf #search { left: 104px; }
 }
 
+/* entrando num estado: o Brasil segue na tela, um aviso discreto mostra a sigla carregando; falha mostra #region-msg por 5 s */
+body[data-loading] { cursor: progress; }
+body[data-loading]::after, #region-msg { position: fixed; z-index: 6; left: 50%; bottom: calc(var(--tl-h, 140px) + 16px); transform: translateX(-50%); padding: 6px 12px; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none; white-space: nowrap; }
+body[data-loading]::after { content: 'carregando ' attr(data-loading) '…'; color: var(--dim); }
+#region-msg { color: #1b1200; background: var(--warn); border-color: var(--warn); font-weight: 650; white-space: normal; max-width: calc(100vw - 32px); text-align: center; }
+#region-msg[hidden] { display: none; }
+
 /* ---------- menu de debug ---------- */
 #debug-toggle { position: fixed; z-index: 7; top: max(10px, env(safe-area-inset-top)); right: 10px; width: 30px; height: 30px; padding: 0; display: grid; place-items: center;
   font: 16px/1 system-ui, sans-serif; color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }

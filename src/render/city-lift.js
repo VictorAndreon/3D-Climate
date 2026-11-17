@@ -93,5 +93,12 @@ export function createCityLift({ reducedMotion = false, groundLL = null, proj })
     if (dir > 0 && k >= 1) dir = 0;
   }
 
-  return { group, select, clear, frame, get mesh() { return mesh; } };
+  /** Sessão encerrada: solta a peça, os materiais e tira o grupo da cena. */
+  function release() {
+    dispose();
+    for (const m of [top, side, edge, ghost]) m.dispose();
+    group.removeFromParent();
+  }
+
+  return { group, select, clear, frame, release, get mesh() { return mesh; } };
 }

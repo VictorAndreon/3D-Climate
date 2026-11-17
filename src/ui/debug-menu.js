@@ -1,6 +1,6 @@
 // Menu de debug: ajusta nuvens, relevo, grade, qualidade e fonte de dados com efeito na hora.
 // A URL é o estado inicial e é reescrita a cada ajuste, então o link sempre reproduz o que está na tela.
-import { writeConfig, EXAGERO } from './config.js';
+import { writeConfig, EXAGERO, DEFAULT_REGION } from './config.js';
 
 const NUVENS = [['solidas', 'sólidas'], ['volume', 'volume'], ['sprite', 'sprite']];
 const QUALIDADE = [['auto', 'auto'], ['alto', 'alto'], ['medio', 'médio'], ['baixo', 'baixo']];
@@ -37,7 +37,7 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
     fx.disabled = cfg.uf !== 'RS'; fx.title = fx.disabled ? 'Fixture disponível só no Rio Grande do Sul' : '';
     exag.value = String(cfg.exagero); exag.disabled = !cfg.relevo || !relevoOk; exagOut.textContent = `${cfg.exagero}×`;
   }
-  const query = () => writeConfig(location.search, cfg, { defaultUf: 'BR' });
+  const query = () => writeConfig(location.search, cfg, { defaultUf: DEFAULT_REGION });
   const urlFor = (q) => location.pathname + (q ? `?${q}` : '') + location.hash;
   const writeUrl = () => history.replaceState(null, '', urlFor(query()));
 
@@ -116,6 +116,8 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
   setOpen(cfg.debug);
   let acc = 0;
   return {
+    /** Entrou noutra região no lugar: o menu passa a gravar a região nova na URL e reabilita o que ela permite. */
+    setRegion(id) { cfg.uf = id; cfg.relevo = stage.state.relevo; sync(); },
     tick(dt) {
       if (el.hidden) return;
       acc += dt;

@@ -181,6 +181,33 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
     frameFns.push(step);
   }
 
+  // mergulho: leva o alvo até (x, z) e a câmera até `dist` do alvo, mantendo o ângulo (ease-in-out). Resolve ao chegar ou
+  // quando qualquer interação (ou outro voo) cancela; um prazo de garantia resolve também com a aba oculta (sem quadros)
+  function flyTo({ x, z }, { dist, seconds = 1.2 } = {}) {
+    controls.dispatchEvent({ type: 'start' });
+    const from = controls.target.clone(), to = new THREE.Vector3(clampX(x), 0, clampZ(z));
+    const off = camera.position.clone().sub(from), d0 = off.length(), d1 = Math.max(dist ?? d0, controls.minDistance);
+    return new Promise((resolve) => {
+      let t = 0, timer = 0;
+      const step = (now, dt) => {
+        t = seconds > 0 ? Math.min(1, t + dt / seconds) : 1;
+        const k = t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2;
+        controls.target.lerpVectors(from, to, k);
+        camera.position.copy(controls.target).addScaledVector(off, (d0 + (d1 - d0) * k) / d0);
+        if (t >= 1) cancel();
+      };
+      const cancel = () => {
+        clearTimeout(timer);
+        controls.removeEventListener('start', cancel);
+        const i = frameFns.indexOf(step); if (i >= 0) frameFns.splice(i, 1);
+        resolve();
+      };
+      controls.addEventListener('start', cancel);
+      frameFns.push(step);
+      timer = setTimeout(cancel, seconds * 2000 + 1000);
+    });
+  }
+
   // ponteiro -> ponto sobre um objeto (ou lista) da cena: peça do estado e município levantado
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
   function pick(object, clientX, clientY) {
@@ -192,7 +219,7 @@ export function createScene(canvas, { cam = 'se', dist = 0, look = null, polar =
   }
 
   return {
-    scene, camera, controls, renderer, setView, setRegion, start, stop, pick, flyIn, focusOn,
+    scene, camera, controls, renderer, setView, setRegion, start, stop, pick, flyIn, flyTo, focusOn,
     onFrame: (fn) => frameFns.push(fn),
     setPixelRatio: (r) => { pixelRatio = r; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, r)); resize(); },
     drawCalls: () => calls,
