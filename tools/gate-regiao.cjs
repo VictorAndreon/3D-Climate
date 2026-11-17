@@ -1,5 +1,5 @@
 // Portão da região por ?uf=: SP abre com grade e cidades próprias, o fuso segue a região, DF e AM têm nuvem e chuva,
-// uf desconhecida cai no RS, a fixture só vale no RS, ?mun= abre o município, API fora do ar vira demo com aviso.
+// uf desconhecida cai no Brasil, a fixture só vale no RS, ?mun= abre o município, API fora do ar vira demo com aviso.
 const { serve, launch, open } = require('./lib.cjs');
 
 (async () => {
@@ -53,7 +53,7 @@ const { serve, launch, open } = require('./lib.cjs');
   // ---------- uf desconhecida ----------
   {
     const { page } = await open(browser, srv.url, 'demo=1&debug=1&uf=xx');
-    check('uf=xx abre no RS', await page.evaluate(() => __rs.region.id) === 'RS');
+    check('uf=xx abre no Brasil', await page.evaluate(() => __rs.region.id) === 'BR');
     await page.close();
   }
 

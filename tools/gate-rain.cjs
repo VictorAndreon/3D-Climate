@@ -10,7 +10,7 @@ const { serve, launch, open } = require('./lib.cjs');
   for (const mode of ['fixture', 'demo']) {
     let total = 0;
     for (const t of [0.5, 12.5, 24.5, 48.5, 71.5]) {
-      const { page, errors } = await open(browser, srv.url, `${mode}=1&debug=1&cam=top&t=${t}`);
+      const { page, errors } = await open(browser, srv.url, `${mode}=1&debug=1&cam=top&t=${t}&uf=RS`);
       await page.waitForTimeout(500);
       await page.screenshot({ path: `shots/gate4-${mode}-${t}.png` });
       const r = await page.evaluate(() => {

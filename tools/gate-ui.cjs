@@ -9,7 +9,7 @@ const { serve, launch, open } = require('./lib.cjs');
   const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FALHA'} ${name}${extra ? ' — ' + extra : ''}`); if (!ok) fails.push(name); };
   const clock = (page) => page.evaluate(() => ({ t: __rs.clock.t, playing: __rs.clock.playing, speed: __rs.clock.speed, tMax: __rs.clock.tMax, tNow: __rs.clock.tNow }));
 
-  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1');
+  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1&uf=RS');
   let c0 = await clock(page);
   check('abre pausado em "agora"', !c0.playing && Math.abs(c0.t - c0.tNow) < 1e-9);
 
@@ -78,7 +78,7 @@ const { serve, launch, open } = require('./lib.cjs');
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const m = await ctx.newPage();
   const merr = []; m.on('console', (x) => { if (x.type() === 'error') merr.push(x.text()); }); m.on('pageerror', (e) => merr.push(String(e)));
-  await m.goto(`${srv.url}index.html?demo=1&debug=1`);
+  await m.goto(`${srv.url}index.html?demo=1&debug=1&uf=RS`);
   await m.waitForFunction(() => document.documentElement.dataset.ready === '1');
   const fb = await m.locator('#timeline').boundingBox();
   check('rodapé cabe na largura do celular', fb.x >= 0 && fb.x + fb.width <= 390, `${fb.x.toFixed(0)}..${(fb.x + fb.width).toFixed(0)}`);

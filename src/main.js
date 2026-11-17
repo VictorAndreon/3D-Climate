@@ -14,12 +14,14 @@ import { parseConfig } from './ui/config.js';
 import { createQuality, LEVELS } from './render/quality.js';
 import { createClock } from './ui/clock.js';
 import { createTimeline } from './ui/timeline.js';
-import { createTooltip } from './ui/tooltip.js';
+import { createTooltip, nearestCity } from './ui/tooltip.js';
 import { createLegend } from './ui/legend.js';
 import { createCityLift } from './render/city-lift.js';
 import { createCityPanel } from './ui/city-panel.js';
 import { createCitySelect } from './ui/city-select.js';
-import { createCitySearch } from './ui/city-search.js';
+import { createCitySearch, fold } from './ui/city-search.js';
+import { createRegionNav, goToRegion } from './ui/region-nav.js';
+import { createMunicipioIndex } from './data/city.js';
 import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
 import { loadCache, saveCache } from './data/cache.js';
@@ -53,7 +55,7 @@ const NO_WEBGL = 'Seu navegador não conseguiu iniciar o WebGL. Recarregue a pá
 async function boot() {
   const index = await loadIndex();
   const ufs = index.filter((r) => r.kind === 'uf').map((r) => r.id);
-  const cfg = parseConfig(location.search, { ufs, defaultUf: 'RS' });   // estado inicial do menu de debug: nuvens, relevo, grade, qualidade, dados, uf, mun
+  const cfg = parseConfig(location.search, { ufs: [...ufs, 'BR'], defaultUf: 'BR' });   // estado inicial do menu de debug: nuvens, relevo, grade, qualidade, dados, uf, mun
   if (cfg.nuvens === 'volume') loadNoise();                 // já vai gerando enquanto o resto carrega
   const region = await loadRegion(index.find((r) => r.id === cfg.uf));
   if (!region.hasRelief) cfg.relevo = false;                // relevo só no RS: pedido na URL é ignorado, sem aviso
@@ -61,7 +63,7 @@ async function boot() {
   let view;
   try { view = createView(canvas, region); } catch { fatal(NO_WEBGL); return; }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); view.stop(); fatal(NO_WEBGL); });
-  await run(cfg, region, view);
+  await run(cfg, region, view, index);
 }
 
 function createView(canvas, { proj, bounds }) {
@@ -69,7 +71,7 @@ function createView(canvas, { proj, bounds }) {
   return createScene(canvas, { bounds, cam: params.get('cam') ?? 'se', dist: Number(params.get('dist') ?? 0), polar: Number(params.get('polar') ?? 0), look: look ? proj.toScene(look[0], look[1]) : null });
 }
 
-async function run(cfg, region, view) {
+async function run(cfg, region, view, index) {
   const { geo, grid, proj } = region;
   const fmt = makeFormat(region.tz);
   // slots só onde há dado: dentro da célula de algum nó da grade
@@ -108,25 +110,57 @@ async function run(cfg, region, view) {
     const hit = view.pick(lift.mesh ? [lift.mesh, land] : land, x, y);
     return hit && (!inside || inside(hit.x, hit.z)) ? hit : null;
   };
+  // visão Brasil: o ponteiro está sobre um estado (índice de polígonos, baixado sem pressa); município não existe aí
+  let stateIndex = null, statesLoading = null;
+  const loadStates = () => (statesLoading ??= fetch('./assets/regions/BR-ufs.json').then((r) => r.json()).then((j) => (stateIndex = createMunicipioIndex(j.items))));
+  const stateAt = (lon, lat) => stateIndex?.find(lon, lat)?.name ?? nearestCity(geo.municipios, lon, lat);   // sem o índice, ou fora dos polígonos: centro de estado mais próximo
+  if (!region.hasCities) (window.requestIdleCallback ?? ((fn) => setTimeout(fn, 500)))(() => loadStates().catch(() => { statesLoading = null; }));
   // no toque quem abre é o painel do município (tem tudo que o tooltip mostraria)
   const tooltip = createTooltip(document.getElementById('tooltip'), {
     canvas: view.renderer.domElement, pick: pickLand, field, clock, municipios: geo.municipios, tapToShow: false, proj,
+    nameAt: region.hasCities ? undefined : stateAt,
   });
-  let citySelect = null;
-  const panel = createCityPanel(document.getElementById('city'), { clock, field, fmt, onClose: () => citySelect.close() });
-  citySelect = createCitySelect({
-    canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios, proj, munUrl: region.munUrl,
-    onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); search.setValue(m?.name ?? ''); },
-  });
-  // busca por nome: seleciona como um clique e leva a câmera até o município
+  let citySelect = null, search = null;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const search = createCitySearch(document.getElementById('search'), {
-    names: geo.municipios.map(([name]) => name),
-    onPick: async (name) => {
-      const ll = await citySelect.selectByName(name).catch((err) => { console.warn('município indisponível', err); return null; });
-      if (ll) { const s = proj.toScene(ll[0], ll[1]); view.focusOn(s.x, s.z, { seconds: reducedMotion ? 0 : 0.9 }); }
-    },
-  });
+  if (region.hasCities) {
+    const panel = createCityPanel(document.getElementById('city'), { clock, field, fmt, onClose: () => citySelect.close() });
+    citySelect = createCitySelect({
+      canvas: view.renderer.domElement, pick: pickLand, lift, panel, municipios: geo.municipios, proj, munUrl: region.munUrl,
+      onSelect: (m) => { document.body.classList.toggle('city-open', !!m); if (m) tooltip.hide(); search.setValue(m?.name ?? ''); },
+    });
+    // busca por nome: seleciona como um clique e leva a câmera até o município
+    search = createCitySearch(document.getElementById('search'), {
+      items: geo.municipios.map(([name]) => ({ label: name, sub: '', kind: 'mun', uf: region.id, key: fold(name) })),
+      onPick: async ({ label }) => {
+        const ll = await citySelect.selectByName(label).catch((err) => { console.warn('município indisponível', err); return null; });
+        if (ll) { const s = proj.toScene(ll[0], ll[1]); view.focusOn(s.x, s.z, { seconds: reducedMotion ? 0 : 0.9 }); }
+      },
+    });
+  } else {
+    // Brasil: clique ou toque num estado entra nele; a busca é nacional (27 estados + municípios, estes baixados no primeiro foco)
+    const canvasEl = view.renderer.domElement;
+    let down = null;
+    canvasEl.addEventListener('pointerdown', (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; });
+    canvasEl.addEventListener('pointerup', async (e) => {
+      const tap = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 8;
+      down = null;
+      const hit = tap && pickLand(e.clientX, e.clientY);
+      if (!hit) return;
+      const { lon, lat } = proj.toLonLat(hit.x, hit.z);
+      const st = (stateIndex ?? await loadStates().catch(() => null))?.find(lon, lat);
+      if (st) goToRegion({ uf: st.id });
+    });
+    canvasEl.addEventListener('pointercancel', () => { down = null; });
+    const stateItems = index.filter((r) => r.kind === 'uf').map((r) => ({ label: r.name, sub: 'estado', kind: 'uf', uf: r.id, key: fold(r.name) }));
+    search = createCitySearch(document.getElementById('search'), {
+      items: stateItems, placeholder: 'Buscar estado ou município…',
+      onFirstFocus: () => fetch('./assets/regions/busca.json').then((r) => r.json()).then((j) => {
+        search.setItems([...stateItems, ...j.items.map(([label, uf, , , ibge]) => ({ label, sub: uf, kind: 'mun', uf, ibge, key: fold(label) }))]);
+      }).catch((err) => console.warn('busca de municípios indisponível', err)),
+      onPick: (item) => goToRegion({ uf: item.uf, mun: item.kind === 'mun' ? item.ibge : null }),
+    });
+  }
+  createRegionNav(document.getElementById('region-back'), { region });
 
   await stage.setClouds(cfg.nuvens);
   const rain = createRain({ slots: slots(SLOT_RAIN, 201), proj, step: grid.step });
@@ -156,7 +190,7 @@ async function run(cfg, region, view) {
   let lastNow = 0;
   onSwap = (what) => {
     if (what === 'clouds') applyQuality(quality.level);
-    if (what === 'map') citySelect.relift();
+    if (what === 'map') citySelect?.relift();
     refresh(lastNow);
   };
 

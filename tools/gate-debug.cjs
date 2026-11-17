@@ -11,7 +11,7 @@ const { serve, launch, open } = require('./lib.cjs');
   // ---------- palco ----------
   {
   // cam=se: sem o voo de abertura, que em renderizador lento ainda está em curso quando a página fica pronta
-  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1&t=30&cam=se');
+  const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1&t=30&cam=se&uf=RS');
   await frames(page);
   const st = () => page.evaluate(() => ({ ...__rs.stage.state, mem: __rs.memory(), info: __rs.stats().cloudInfo, t: __rs.clock.t }));
   const cam = () => page.evaluate(() => __rs.view.camera.position.toArray());   // expor `view` em __rs
@@ -67,7 +67,7 @@ const { serve, launch, open } = require('./lib.cjs');
 
   // estado inicial pela URL
   {
-  const { page } = await open(browser, srv.url, 'demo=1&debug=1&nuvens=volume&relevo=1&exagero=20');
+  const { page } = await open(browser, srv.url, 'demo=1&debug=1&nuvens=volume&relevo=1&exagero=20&uf=RS');
   const s = await page.evaluate(() => __rs.stage.state);
   check('URL monta o estado inicial', s.nuvens === 'volume' && s.relevo && s.exagero === 20 && s.grade, JSON.stringify(s));
   await page.close();
@@ -75,7 +75,7 @@ const { serve, launch, open } = require('./lib.cjs');
 
   // ---------- menu ----------
   {
-  const { page: m } = await open(browser, srv.url, 'demo=1&cam=top&t=5');
+  const { page: m } = await open(browser, srv.url, 'demo=1&cam=top&t=5&uf=RS');
   check('fechado por padrão, só o botão', await m.evaluate(() => document.getElementById('debug').hidden && document.getElementById('debug-toggle').getBoundingClientRect().width > 0));
   check('sem debug=1 não expõe __rs', await m.evaluate(() => typeof window.__rs === 'undefined'));
   await m.click('#debug-toggle');
@@ -84,7 +84,7 @@ const { serve, launch, open } = require('./lib.cjs');
 
   await m.check('input[name=nuvens][value=sprite]');
   await m.waitForFunction(() => location.search.includes('nuvens=sprite'));
-  check('URL preserva cam e t', await m.evaluate(() => location.search === '?cam=top&t=5&nuvens=sprite&demo=1'), await m.evaluate(() => location.search));
+  check('URL preserva cam e t', await m.evaluate(() => location.search === '?cam=top&t=5&nuvens=sprite&uf=RS&demo=1'), await m.evaluate(() => location.search));
 
   check('exagero desabilitado sem relevo', await m.isDisabled('input[name=exagero]'));
   await m.check('input[name=relevo]');
@@ -115,7 +115,7 @@ const { serve, launch, open } = require('./lib.cjs');
   check('Dados troca a fonte recarregando', await m.evaluate(() => !location.search.includes('demo=1')));
 
   // rajada pelo menu: controles, URL e palco terminam iguais
-  const { page: r } = await open(browser, srv.url, 'demo=1&debug=1');
+  const { page: r } = await open(browser, srv.url, 'demo=1&debug=1&uf=RS');
   await r.evaluate(() => { document.querySelector('input[name=nuvens][value=volume]').click(); document.querySelector('input[name=nuvens][value=sprite]').click(); });
   await r.waitForFunction(() => location.search.includes('nuvens=sprite'));
   await r.evaluate(() => __rs.stage.idle()); await r.waitForTimeout(200);
@@ -125,14 +125,14 @@ const { serve, launch, open } = require('./lib.cjs');
   // relevo indisponível já na abertura (?relevo=1): menu não pode marcar relevo sobre o mapa plano
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   await ctx.route('**/relief.bin.gz', (rt) => rt.abort());
-  const { page: b0 } = await open(ctx, srv.url, 'demo=1&debug=1&relevo=1&exagero=20');
+  const { page: b0 } = await open(ctx, srv.url, 'demo=1&debug=1&relevo=1&exagero=20&uf=RS');
   check('abertura com relevo falho: desmarcado, aviso, URL sem relevo', await b0.evaluate(() => !document.querySelector('input[name=relevo]').checked
     && document.querySelector('input[name=exagero]').disabled && document.querySelector('.dbg-msg').textContent.includes('Relevo indisponível') && !location.search.includes('relevo')),
     await b0.evaluate(() => `${document.querySelector('input[name=relevo]').checked} "${document.querySelector('.dbg-msg').textContent}" ${location.search}`));
   await ctx.close();
 
   // Review Focus 3: relevo indisponível
-  const { page: f } = await open(browser, srv.url, 'demo=1');
+  const { page: f } = await open(browser, srv.url, 'demo=1&uf=RS');
   await f.route('**/relief.bin.gz', (r) => r.abort());
   await f.click('#debug-toggle'); await f.check('input[name=relevo]').catch(() => {});
   await f.waitForFunction(() => document.querySelector('.dbg-msg').textContent.includes('Relevo indisponível'));
@@ -141,7 +141,7 @@ const { serve, launch, open } = require('./lib.cjs');
   await m.close(); await f.close();                        // cada página aberta segue renderizando; fecha antes de abrir mais
   // sobreposição, desktop e celular
   for (const [w, h] of [[1280, 800], [390, 844]]) {
-    const { page: p } = await open(browser, srv.url, 'demo=1&debug=1', { width: w, height: h });
+    const { page: p } = await open(browser, srv.url, 'demo=1&debug=1&uf=RS', { width: w, height: h });
     await p.evaluate(() => __rs.citySelect.selectByName('Porto Alegre')); await p.waitForTimeout(400);
     check(`painel do município aberto em ${w}×${h}`, await p.evaluate(() => !document.getElementById('city').hidden));
     const hit = await p.evaluate(() => {

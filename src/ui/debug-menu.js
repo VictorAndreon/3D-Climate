@@ -33,9 +33,11 @@ export function createDebugMenu(el, { button, config, stage, quality, applyQuali
     $('input[name=relevo]').checked = cfg.relevo; $('input[name=relevo]').disabled = !relevoOk;
     $('input[name=relevo]').title = relevoOk ? '' : 'Relevo disponível só no Rio Grande do Sul';
     $('input[name=grade]').checked = cfg.grade;
+    const fx = $('input[name=dados][value=fixture]');            // a fixture é gravada só do RS: fora dele, trocar para ela recarregaria em dado ao vivo
+    fx.disabled = cfg.uf !== 'RS'; fx.title = fx.disabled ? 'Fixture disponível só no Rio Grande do Sul' : '';
     exag.value = String(cfg.exagero); exag.disabled = !cfg.relevo || !relevoOk; exagOut.textContent = `${cfg.exagero}×`;
   }
-  const query = () => writeConfig(location.search, cfg);
+  const query = () => writeConfig(location.search, cfg, { defaultUf: 'BR' });
   const urlFor = (q) => location.pathname + (q ? `?${q}` : '') + location.hash;
   const writeUrl = () => history.replaceState(null, '', urlFor(query()));
 

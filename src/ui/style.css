@@ -110,6 +110,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradi
   .cs-input { height: 40px; font-size: 16px; }              /* 16px: o iOS não dá zoom ao focar */
 }
 
+/* ---------- voltar ao Brasil ---------- */
+#region-back { position: fixed; z-index: 6; top: max(12px, env(safe-area-inset-top)); left: 352px; height: 36px; padding: 0 14px; font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#region-back:hover { background: rgba(255, 255, 255, .14); }
+#region-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cs-sub { margin-left: 8px; font-size: 11.5px; color: var(--dim); opacity: .8; }
+@media (max-width: 640px) {
+  #region-back { top: calc(max(10px, env(safe-area-inset-top)) + 38px); left: 10px; height: 40px; font-size: 14px; }   /* na linha da busca, que cede espaço */
+  body.in-uf #search { left: 104px; }
+}
+
 /* ---------- menu de debug ---------- */
 #debug-toggle { position: fixed; z-index: 7; top: max(10px, env(safe-area-inset-top)); right: 10px; width: 30px; height: 30px; padding: 0; display: grid; place-items: center;
   font: 16px/1 system-ui, sans-serif; color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }

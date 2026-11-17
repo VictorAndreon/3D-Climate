@@ -35,7 +35,7 @@ const byCoord = new Map(cells.map((c, p) => [`${(lat0 + Math.floor(c / nx) * ste
     });
     return { page, st };
   }
-  const load = async (page, query = 'debug=1&cam=se') => { await page.goto(`${srv.url}index.html?${query}`); await page.waitForFunction(() => document.documentElement.dataset.ready === '1', null, { timeout: 30000 }); };
+  const load = async (page, query = 'debug=1&cam=se&uf=RS') => { await page.goto(`${srv.url}index.html?${query}`); await page.waitForFunction(() => document.documentElement.dataset.ready === '1', null, { timeout: 30000 }); };
   const badge = (page) => page.textContent('#badge');
 
   // (1) primeira carga: ao vivo
@@ -85,9 +85,9 @@ const byCoord = new Map(cells.map((c, p) => [`${(lat0 + Math.floor(c / nx) * ste
 
   // modos demo e fixture não tocam na API
   ({ page, st } = await newPage(ctx2, true));
-  await load(page, 'demo=1&debug=1&cam=se');
+  await load(page, 'demo=1&debug=1&cam=se&uf=RS');
   check('?demo=1 não chama a API', st.api === 0);
-  await load(page, 'fixture=1&debug=1&cam=se');
+  await load(page, 'fixture=1&debug=1&cam=se&uf=RS');
   check('?fixture=1 não chama a API e avisa que é gravação', st.api === 0 && (await badge(page)).startsWith('FIXTURE — gravado em'));
   await page.close(); await ctx2.close();
 

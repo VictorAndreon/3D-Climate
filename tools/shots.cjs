@@ -10,9 +10,9 @@ const { serve, launch, open } = require('./lib.cjs');
   const srv = await serve(), browser = await launch();
   let code = 0;
   try {
-    const { page, errors } = await open(browser, srv.url, query, { width: +w, height: +h });
+    const { page, errors } = await open(browser, srv.url, query, { width: +w, height: +h, timeout: 120000 });
     await page.waitForTimeout(600);
-    await page.screenshot({ path: out });
+    await page.screenshot({ path: out, timeout: 120000 });
     const stats = await page.evaluate(() => (window.__rs?.stats ? window.__rs.stats() : null));
     if (stats) console.log(JSON.stringify(stats));
     if (errors.length) { console.error('ERROS NO CONSOLE:\n' + errors.join('\n')); code = 1; }

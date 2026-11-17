@@ -27,8 +27,11 @@ export function tooltipLines(city, c) {
   };
 }
 
-/** pick(clientX, clientY) devolve { x, z } na cena se o ponteiro está sobre o estado, senão null. */
-export function createTooltip(el, { canvas, pick, field, clock, municipios, tapToShow = true, proj }) {
+/**
+ * pick(clientX, clientY) devolve { x, z } na cena se o ponteiro está sobre a região, senão null.
+ * nameAt(lon, lat) dá o título (município ou, na visão Brasil, o estado); sem ele vale o centroide mais próximo de `municipios`.
+ */
+export function createTooltip(el, { canvas, pick, field, clock, municipios, nameAt = (lon, lat) => nearestCity(municipios, lon, lat), tapToShow = true, proj }) {
   let last = null;                                   // última posição com tooltip aberto
   const row = (k, v) => `<div class="tt-row"><span>${k}</span><b>${v}</b></div>`;
   function hide() { el.hidden = true; last = null; }
@@ -38,7 +41,7 @@ export function createTooltip(el, { canvas, pick, field, clock, municipios, tapT
     const cell = ll && field.cellInfo(ll.lon, ll.lat, clock.t);
     if (!cell) { hide(); return; }
     last = { clientX, clientY };
-    const l = tooltipLines(nearestCity(municipios, ll.lon, ll.lat), cell);
+    const l = tooltipLines(nameAt(ll.lon, ll.lat), cell);
     el.innerHTML = `<div class="tt-title"></div><div class="tt-cond"></div>${row('Nuvens', l.clouds)}${row('Chuva', l.rain)}${row('Vento', l.wind)}`;
     el.querySelector('.tt-title').textContent = l.title;
     el.querySelector('.tt-cond').textContent = l.condition;
