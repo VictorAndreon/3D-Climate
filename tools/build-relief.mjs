@@ -15,7 +15,7 @@ const W = 512;
 const PAD = 0.1;
 const TILE = (x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${Z}/${x}/${y}.png`;
 
-const geo = JSON.parse(readFileSync('assets/rs.json', 'utf8'));
+const geo = JSON.parse(readFileSync('assets/regions/RS.json', 'utf8'));
 let lon0 = Infinity, lon1 = -Infinity, latS = Infinity, latN = -Infinity;
 for (const [outer] of geo.outline) for (let i = 0; i < outer.length; i += 2) {
   lon0 = Math.min(lon0, outer[i]); lon1 = Math.max(lon1, outer[i]);

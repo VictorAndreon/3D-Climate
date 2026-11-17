@@ -1,7 +1,7 @@
 // Município clicado: qual polígono contém o ponto e o resumo da previsão no centro dele. Módulo puro.
 import { WET_MM } from './weather-field.js';
 
-/** items: [id, nome, áreaKm², polígonos [[anel externo plano, ...furos]]] (assets/municipios.json). */
+/** items: [id, nome, áreaKm², polígonos [[anel externo plano, ...furos]]] (assets/regions/RS-mun.json). */
 export function createMunicipioIndex(items) {
   const list = items.map(([id, name, area, polys]) => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;

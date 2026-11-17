@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { near } from './helpers.mjs';
 
-const geo = JSON.parse(readFileSync('assets/rs.json', 'utf8'));
-test('tamanho ≤ 350 KB', () => assert(statSync('assets/rs.json').size <= 350 * 1024));
+const geo = JSON.parse(readFileSync('assets/regions/RS.json', 'utf8'));
+test('tamanho ≤ 350 KB', () => assert(statSync('assets/regions/RS.json').size <= 350 * 1024));
 test('grade 0,25° alinhada', () => { assert.equal(geo.grid.step, 0.25); assert(Number.isInteger(geo.grid.lon0 / 0.25)); assert(Number.isInteger(geo.grid.lat0 / 0.25)); });
 test('546 pontos (±10% se a fonte mudar)', () => assert(geo.grid.cells.length >= 490 && geo.grid.cells.length <= 600));
 test('gridVersion carrega nP', () => assert(geo.gridVersion.endsWith(':' + geo.grid.cells.length)));

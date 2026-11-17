@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { serve, launch, ROOT } = require('./lib.cjs');
 
-const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/rs.json'), 'utf8'));
+const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/regions/RS.json'), 'utf8'));
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/fixture.json'), 'utf8'));
 const { lon0, lat0, step, nx, cells } = geo.grid;
 const byCoord = new Map(cells.map((c, p) => [`${(lat0 + Math.floor(c / nx) * step).toFixed(2)},${(lon0 + (c % nx) * step).toFixed(2)}`, p]));

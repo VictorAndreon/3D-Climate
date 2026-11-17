@@ -5,7 +5,7 @@ import { makeGrid } from '../src/data/grid.js';
 import { buildUrls, fetchForecast } from '../src/data/fetch.js';
 import { HOURLY } from '../src/data/normalize.js';
 
-const grid = makeGrid(JSON.parse(readFileSync('assets/rs.json', 'utf8')).grid);
+const grid = makeGrid(JSON.parse(readFileSync('assets/regions/RS.json', 'utf8')).grid);
 const lats = (url) => new URL(url).searchParams.get('latitude').split(',');
 /** Servidor falso: devolve cloud_cover_low = índice global do ponto (pela latitude/longitude pedidas). */
 function fakeFetch({ delay = () => 0, mutate } = {}) {

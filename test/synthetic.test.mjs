@@ -7,7 +7,7 @@ import { analyticField } from '../src/data/analytic.js';
 import { makeProjection, RS_PROJECTION } from '../src/geo/projection.js';
 import { syntheticSeries, seriesToApiJson } from '../src/data/synthetic.js';
 
-const grid = makeGrid(JSON.parse(readFileSync('assets/rs.json', 'utf8')).grid);
+const grid = makeGrid(JSON.parse(readFileSync('assets/regions/RS.json', 'utf8')).grid);
 const START = 1794578400, proj = makeProjection(RS_PROJECTION), s = syntheticSeries(grid, START, proj), a = analyticField({ startUnix: START, proj });
 
 test('times de hora em hora a partir de startUnix, 168 h', () => { assert.equal(s.nT, 168); assert.equal(s.nP, grid.nP); assert.equal(s.times[0], START); assert.equal(s.times[167], START + 167 * 3600); });

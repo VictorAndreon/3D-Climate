@@ -7,7 +7,7 @@ const TAP_PX = 8;
 export function createCitySelect({ canvas, pick, lift, panel, municipios, proj, onSelect = () => {} }) {
   let index = null, loading = null, current = null;
   const centers = new Map(municipios.map(([name, lon, lat]) => [name, [lon, lat]]));
-  const load = () => (loading ??= fetch('./assets/municipios.json').then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
+  const load = () => (loading ??= fetch('./assets/regions/RS-mun.json').then((r) => r.json()).then((j) => { index = createMunicipioIndex(j.items); return index; }));
 
   function close() {
     if (!current) return;

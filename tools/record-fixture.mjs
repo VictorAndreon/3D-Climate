@@ -10,7 +10,7 @@ import { makeProjection, RS_PROJECTION } from '../src/geo/projection.js';
 
 const run = promisify(execFile);
 const OUT = 'assets/fixture.json';
-const grid = makeGrid(JSON.parse(readFileSync('assets/rs.json', 'utf8')).grid);
+const grid = makeGrid(JSON.parse(readFileSync('assets/regions/RS.json', 'utf8')).grid);
 const urls = buildUrls(grid);
 
 async function fetchAll() {

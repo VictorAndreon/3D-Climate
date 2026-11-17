@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createMunicipioIndex, rainOutlook, totalCover } from '../src/data/city.js';
 
-const mun = JSON.parse(readFileSync('assets/municipios.json', 'utf8'));
-const geo = JSON.parse(readFileSync('assets/rs.json', 'utf8'));
+const mun = JSON.parse(readFileSync('assets/regions/RS-mun.json', 'utf8'));
+const geo = JSON.parse(readFileSync('assets/regions/RS.json', 'utf8'));
 const idx = createMunicipioIndex(mun.items);
 
-test('municipios.json casa com rs.json: mesmos nomes, mesma ordem, mesma grade', () => {
+test('RS-mun.json casa com RS.json: mesmos nomes, mesma ordem, mesma grade', () => {
   assert.equal(mun.gridVersion, geo.gridVersion);
   assert.deepEqual(mun.items.map((i) => i[1]), geo.municipios.map((m) => m[0]));
 });

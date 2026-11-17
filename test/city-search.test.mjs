@@ -25,6 +25,6 @@ test('respeita o limite e devolve a posição do trecho casado', () => {
   assert.deepEqual(searchCities(NAMES, 'alegre'), [{ name: 'Alegrete', at: 0 }, { name: 'Porto Alegre', at: 6 }]);
 });
 test('todo município do mapa é achado pelo próprio nome', () => {
-  const all = JSON.parse(fs.readFileSync(new URL('../assets/rs.json', import.meta.url))).municipios.map(([n]) => n);
+  const all = JSON.parse(fs.readFileSync(new URL('../assets/regions/RS.json', import.meta.url))).municipios.map(([n]) => n);
   for (const n of all) assert(searchCities(all, n, 50).some((r) => r.name === n), n);
 });

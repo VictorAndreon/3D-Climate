@@ -53,7 +53,7 @@ function fatal(msg) {
 const NO_WEBGL = 'Seu navegador não conseguiu iniciar o WebGL. Recarregue a página.';
 
 async function boot() {
-  const geo = await (await fetch('./assets/rs.json')).json();
+  const geo = await (await fetch('./assets/regions/RS.json')).json();
   const grid = makeGrid(geo.grid);
   const proj = makeProjection(RS_PROJECTION);
   const canvas = document.getElementById('scene');

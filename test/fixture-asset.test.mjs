@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { makeGrid } from '../src/data/grid.js';
 import { normalizeResponse, buildSeries, findNowIndex } from '../src/data/normalize.js';
 
-const grid = makeGrid(JSON.parse(readFileSync('assets/rs.json', 'utf8')).grid);
+const grid = makeGrid(JSON.parse(readFileSync('assets/regions/RS.json', 'utf8')).grid);
 test('assets/fixture.json passa pelo mesmo parsing da API', () => {
   const s = buildSeries(grid, normalizeResponse(JSON.parse(readFileSync('assets/fixture.json', 'utf8'))));
   assert.equal(s.nT, 168); assert.equal(s.nP, grid.nP); assert.equal(s.times[1] - s.times[0], 3600);

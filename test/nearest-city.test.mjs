@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { nearestCity, windCardinal, tooltipLines } from '../src/ui/tooltip.js';
 
-const geo = JSON.parse(readFileSync('assets/rs.json', 'utf8'));
+const geo = JSON.parse(readFileSync('assets/regions/RS.json', 'utf8'));
 test('centro de Porto Alegre', () => assert.equal(nearestCity(geo.municipios, -51.2, -30.05), 'Porto Alegre'));
 test('Santa Maria', () => assert.equal(nearestCity(geo.municipios, -53.8, -29.7), 'Santa Maria'));
 test('ponto no mar ainda devolve o mais próximo', () => assert.equal(typeof nearestCity(geo.municipios, -49, -31), 'string'));
