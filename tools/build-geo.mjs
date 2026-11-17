@@ -1,16 +1,17 @@
 // Baixa a malha municipal de cada UF, simplifica e gera assets/regions/: um par <UF>.json / <UF>-mun.json por
 // estado, BR.json / BR-ufs.json para o país, busca.json e index.json (contorno, bordas internas, centroides,
-// grade de 0,25° nos estados e de 1° no Brasil). Roda uma vez; saída commitada.
+// grade de 0,25° nos estados e de 1° no Brasil, ou a menor mais grossa que caiba em 550 pontos). Roda uma vez; saída commitada.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { RS_PROJECTION, fitProjection } from '../src/geo/projection.js';
+import { pickStep } from '../src/geo/steps.js';
 
 const URL_OF = (ibge) => `https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-${ibge}-mun.json`;
 const OUT_DIR = 'assets/regions';
 const MAX_BYTES = 350 * 1024;
-const STEP = 0.25, STEP_BR = 1;
+const STEP = 0.25, STEP_BR = 1;               // passos iniciais; cada região usa o menor passo de STEPS que dê ≤ 550 pontos
 const MIN_RING_KM2 = 50;
 const ISLAND_KM = 150;                       // anel mais longe que isso do corpo do estado fica fora do bbox
 const MAPSHAPER = resolve('node_modules/.bin/mapshaper');
@@ -54,6 +55,12 @@ const inRing = (r, x, y) => {
   }
   return c;
 };
+/** Grade da região no menor passo (a partir de `from`) que cabe no teto de pontos da API. */
+function gridForRegion(allPolys, from) {
+  const made = new Map();
+  const { step } = pickStep((st) => { const g = makeGridFor(allPolys, st); made.set(st, g); return g.grid.cells.length; }, from);
+  return { ...made.get(step), step };
+}
 function makeGridFor(allPolys, step) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   const boxes = allPolys.map((p) => {
@@ -175,7 +182,7 @@ for (const st of states) {
   }).sort((a, b) => byName(a[0], b[0]));
   for (const [nome, lon, lat, id] of municipios) busca.push([nome, uf.id, lon, lat, id]);
 
-  const { grid, gridVersion, nInside } = makeGridFor(allPolys, STEP);
+  const { grid, gridVersion, nInside, step } = gridForRegion(allPolys, STEP);
   const munCoords = municipios.map((m) => m.slice(0, 3));
   const { json: file, pct } = simplifyToCap(sub, raw, 40, null, (outline, borders) => JSON.stringify({ gridVersion, outline, borders, municipios: munCoords, grid }));
   if (Buffer.byteLength(file) > MAX_BYTES) throw new Error(`${uf.id}: ${Buffer.byteLength(file)} bytes passa do teto`);
@@ -194,7 +201,7 @@ for (const st of states) {
   const [x0, y0, x1, y1] = mainBBox(allPolys);
   const bbox = [x0, y0, x1, y1];
   const proj = uf.id === 'RS' ? RS_PROJECTION : fitProjection({ minLon: x0, maxLon: x1, minLat: y0, maxLat: y1 });
-  index.push({ id: uf.id, name: uf.name, kind: 'uf', ibge: uf.ibge, tz: uf.tz, bbox, proj, step: STEP, nP: grid.cells.length, gridVersion });
+  index.push({ id: uf.id, name: uf.name, kind: 'uf', ibge: uf.ibge, tz: uf.tz, bbox, proj, step, nP: grid.cells.length, gridVersion });
 
   // centro do estado para o mapa do Brasil: média dos centros dos anéis do corpo principal, ponderada pela área
   let sa = 0, sx = 0, sy = 0;
@@ -205,7 +212,7 @@ for (const st of states) {
   }
   brCenters.push([uf.name, r3(sx / sa), r3(sy / sa)]);
   total += features.length;
-  rows.push(`${uf.id} nP ${grid.cells.length} (dentro ${nInside}) ${bytes(join(OUT_DIR, `${uf.id}.json`))} B + ${bytes(join(OUT_DIR, `${uf.id}-mun.json`))} B, simplify ${pct}%, ${features.length} municípios, ${gridVersion}`);
+  rows.push(`${uf.id} passo ${step} nP ${grid.cells.length} (dentro ${nInside}) ${bytes(join(OUT_DIR, `${uf.id}.json`))} B + ${bytes(join(OUT_DIR, `${uf.id}-mun.json`))} B, simplify ${pct}%, ${features.length} municípios, ${gridVersion}`);
   console.log(rows.at(-1));
 }
 
@@ -216,7 +223,7 @@ for (const st of states) {
   const features = states.flatMap((st) => st.features.map((f) => ({ type: 'Feature', properties: { uf: st.uf.id }, geometry: f.geometry })));
   writeFileSync(all, JSON.stringify({ type: 'FeatureCollection', features }));
   const allPolys = features.flatMap((f) => polysOf(f.geometry));
-  const { grid, gridVersion, nInside } = makeGridFor(allPolys, STEP_BR);
+  const { grid, gridVersion, nInside, step } = gridForRegion(allPolys, STEP_BR);
   brCenters.sort((a, b) => byName(a[0], b[0]));
   const { json: file, pct, simp } = simplifyToCap(sub, all, 3, 'uf', (outline, borders) => JSON.stringify({ gridVersion, outline, borders, municipios: brCenters, grid }));
   if (Buffer.byteLength(file) > MAX_BYTES) throw new Error(`BR: ${Buffer.byteLength(file)} bytes passa do teto`);
@@ -234,9 +241,9 @@ for (const st of states) {
   const [x0, y0, x1, y1] = mainBox;
   index.unshift({
     id: 'BR', name: 'Brasil', kind: 'pais', ibge: 76, tz: SP_TZ, bbox: mainBox,
-    proj: fitProjection({ minLon: x0, maxLon: x1, minLat: y0, maxLat: y1 }), step: STEP_BR, nP: grid.cells.length, gridVersion,
+    proj: fitProjection({ minLon: x0, maxLon: x1, minLat: y0, maxLat: y1 }), step, nP: grid.cells.length, gridVersion,
   });
-  rows.unshift(`BR nP ${grid.cells.length} (dentro ${nInside}) ${bytes(join(OUT_DIR, 'BR.json'))} B + ${bytes(join(OUT_DIR, 'BR-ufs.json'))} B, simplify ${pct}%, ${gridVersion}`);
+  rows.unshift(`BR passo ${step} nP ${grid.cells.length} (dentro ${nInside}) ${bytes(join(OUT_DIR, 'BR.json'))} B + ${bytes(join(OUT_DIR, 'BR-ufs.json'))} B, simplify ${pct}%, ${gridVersion}`);
   console.log(rows[0]);
 }
 

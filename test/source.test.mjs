@@ -79,7 +79,7 @@ test('Final#4: dado ao vivo com mais de 1 h pede recarga; demo e fixture nunca',
   assert.equal(shouldReload({ kind: 'live', fetchedAt: at }, at + 3599, at), false);
   assert.equal(shouldReload({ kind: 'live', fetchedAt: at }, at + 3601, at), true);
   assert.equal(shouldReload({ kind: 'cache', fetchedAt: at }, at + 3601, at), true);
-  for (const kind of ['demo', 'demo-fallback', 'fixture']) assert.equal(shouldReload({ kind, fetchedAt: at }, at + 99999, at), false);
+  for (const kind of ['demo', 'fixture']) assert.equal(shouldReload({ kind, fetchedAt: at }, at + 99999, at), false);
 });
 test('Final#4: desatualizado tenta de novo no máximo a cada 15 min (não a cada troca de aba)', () => {
   const at = 1000000, loaded = at + 7200;
@@ -87,6 +87,17 @@ test('Final#4: desatualizado tenta de novo no máximo a cada 15 min (não a cada
   assert.equal(shouldReload({ kind: 'stale', fetchedAt: at }, loaded + 901, loaded), true);
 });
 
+test('Task7: dado sintético por falha tenta de novo como o desatualizado (15 min desde a carga)', () => {
+  const at = 1000000, loaded = at + 7200;
+  assert.equal(shouldReload({ kind: 'demo-fallback', fetchedAt: at }, loaded + 60, loaded), false);
+  assert.equal(shouldReload({ kind: 'demo-fallback', fetchedAt: at }, loaded + 901, loaded), true);
+});
+test('Task7: loadWeather repassa onWait ao fetchForecast', async () => {
+  const d = deps(), onWait = () => {}; let got;
+  d.fetchForecast = async (g, o) => { got = o; return mk(HOUR0, 1); };
+  await loadWeather({ mode: 'live', grid, gridVersion: 'gv', nowUnix: NOW, deps: d, onWait });
+  assert.equal(got.onWait, onWait);
+});
 test('Final#1: carga abortada rejeita (não vira demo nem stale) e não grava cache', async () => {
   const ctl = new AbortController(), saved = [];
   const d = { ...deps(), fetchForecast: async (g, { signal } = {}) => { ctl.abort(); if (signal?.aborted) throw new DOMException('abortado', 'AbortError'); return mk(HOUR0, 1); }, saveCache: async () => { saved.push(1); } };

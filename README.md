@@ -1,8 +1,8 @@
 # Tempo 3D Brasil
 
 Maquete 3D do Brasil e de cada um dos 27 estados que mostra a previsão do tempo do Open-Meteo como nuvens, chuva e raios
-estilizados, com linha do tempo. O site abre no Brasil (grade de 1°); clicar num estado, buscar por ele ou por um município
-leva a câmera até lá e abre a vista detalhada do estado (grade de 0,25°), sem recarregar a página: a hora da linha do tempo,
+estilizados, com linha do tempo. O site abre no Brasil (grade de 1,5°); clicar num estado, buscar por ele ou por um município
+leva a câmera até lá e abre a vista detalhada do estado (grade de 0,25° a 0,6°, conforme o tamanho), sem recarregar a página: a hora da linha do tempo,
 o play e a velocidade continuam, e voltar/avançar do navegador funciona. Projeto lúdico, de uso pessoal. Não é ferramenta meteorológica.
 
 O design está em [`DESIGN.md`](DESIGN.md) e o plano de implementação em
@@ -87,11 +87,12 @@ node tools/gate-brasil.cjs
 node tools/gate-pecas.cjs
 ```
 
-- `npm test`: 252 testes dos módulos puros (`node --test`; precisa de `npm install` antes, um dos testes importa o `three`), incluindo a propriedade A1 com 20.000 amostras.
+- `npm test`: 272 testes dos módulos puros (`node --test`; precisa de `npm install` antes, um dos testes importa o `three`), incluindo a propriedade A1 com 20.000 amostras.
 - `gate-rain`: visto de cima, em 5 horários, a base e o topo de todo traço de chuva desenhado ficam em célula cujo dado bruto é molhado.
 - `gate-ui`: play, scrub, velocidade, teclado, tooltip, selo, celular.
 - `gate-debug`: o menu troca nuvens, relevo, exagero, grade e qualidade no lugar, mantém câmera, horário e município, não vaza memória, reflete e reescreve a URL, e não cobre busca, painel nem linha do tempo.
 - `gate-regiao`: cada região abre com a grade, o fuso e o contorno certos (`uf=`, `mun=`, fixture só no RS, API fora do ar).
+- `gate-cota`: 429 simulado no primeiro carregamento do Brasil e ao entrar em SP: o aviso de espera aparece (no `#loading` e no indicador do estado) e a cena termina ao vivo.
 - `gate-brasil`: o Brasil como abertura (tooltip, clique, busca nacional) e a troca no lugar: sem recarga, hora e play mantidos, histórico, rajada, menu de debug preservado, sem vazar ouvinte nem memória de GPU, falha ao entrar não troca, movimento reduzido.
 - `gate-pecas`: o `signal` das interfaces remove os ouvintes de verdade e o palco troca a região inteira sem duplicar objetos nem vazar memória.
 - `gate-final`: caminho ao vivo + cache com a API interceptada (11 requisições na primeira carga, zero na segunda, primeiro quadro, fallbacks, nenhum host externo além da API).
@@ -129,8 +130,16 @@ Nada disto foi provado daqui, e os números de fps em Chromium headless **não**
    Abra `/` e confira se o selo mostra `dados de HH:MM · Open-Meteo`. Se aparecer `DEMO — dados sintéticos`, a busca falhou.
 2. **fps no notebook com GPU integrada.** Abra `/?debug=1`, dê play e gire a câmera. A qualidade adaptativa desce de
    nível sozinha se o quadro passar de 20 ms; o painel mostra o nível.
-3. **Consumo de cota.** Uma carga pede 546 pontos em 11 requisições. Os limites que o design cita (600/min, 5 mil/h,
-   10 mil/dia) vieram de memória e não foram conferidos. Ao gravar a fixture, a API respondeu uma vez
+3. **Consumo de cota.** O plano grátis do Open-Meteo aceita 600 pontos por minuto (cabeçalhos `X-RateLimit-Limit: 600`,
+   `X-RateLimit-Window: 60`, custo 1 por ponto; conferido com uma chamada real). Por isso **toda região tem no máximo 550
+   pontos**: `tools/build-geo.mjs` usa, para cada uma, o menor passo da lista 0,25 · 0,3 · 0,35 · 0,4 · 0,5 · 0,6 · 0,75 · 1 · 1,25 · 1,5°
+   que caiba (RS, SP e os demais que já cabiam ficam a 0,25°; AM 0,6°, PA e MT 0,5°, BA e MG 0,35°, GO, MA e MS 0,3°; Brasil 1,5°).
+   A maquete ocupa o mesmo tamanho na tela, então só se perde detalhe em km. Se a API mesmo assim responder HTTP 429
+   (por exemplo, Brasil e um estado no mesmo minuto), a carga guarda os lotes que já chegaram, espera até o
+   `X-RateLimit-Reset` (ou 61 s se o cabeçalho não for legível) e continua; a tela mostra
+   `aguardando a API (limite por minuto)… N s`, e entrar num estado logo depois de abrir o Brasil pode levar até um minuto.
+   Três janelas seguidas recusadas contam como falha. Dado sintético por falha (`demo-fallback`) tenta de novo a cada 15 min,
+   como o desatualizado. Os outros limites que o design cita (5 mil/h, 10 mil/dia) não foram conferidos. Ao gravar a fixture, a API respondeu uma vez
    `Daily API request limit exceeded` para este container (IP de saída compartilhado) e aceitou a carga inteira
    uma hora depois; não dá para saber daqui quanta folga o seu IP terá.
 4. **Aparência no dia a dia.** A verificação visual foi feita com o campo sintético e com uma única gravação real
@@ -146,7 +155,7 @@ Desvios e escolhas feitas onde o design deixava margem.
 - `assets/regions/RS.json` com simplificação de 40% no mapshaper: 229 KB.
 - `assets/fixture.json` é uma **resposta real** do Open-Meteo gravada em 13/11/2026 às 12:00 (546 pontos × 168 h, 2,9 MB; tem chuva nas 168 h e trovoada em 118). A primeira tentativa de gravar falhou com `Daily API request limit exceeded`; a segunda, uma hora depois, passou.
 - A API devolve a coordenada ajustada à grade do modelo; os locais são mapeados para os pontos **pela ordem do pedido**.
-- Erro da API (HTTP 400/429 ou `{"error":true}`), lote incompleto e série torta contam como falha de rede.
+- Erro da API (HTTP 400 ou `{"error":true}`; o 429 é espera, ver Consumo de cota), lote incompleto e série torta contam como falha de rede.
 
 **Dados**
 - Hora ativa de chuva e trovoada: `h = ceil(t)`; `precipitation[h]` vale para o intervalo `(h-1, h]`, em degrau.

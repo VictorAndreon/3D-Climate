@@ -9,6 +9,7 @@ import { parseConfig, DEFAULT_REGION } from './ui/config.js';
 import { createQuality, LEVELS } from './render/quality.js';
 import { loadWeather, shouldReload } from './data/source.js';
 import { fetchForecast } from './data/fetch.js';
+import { createWaitNotice } from './ui/wait.js';
 import { loadCache, saveCache } from './data/cache.js';
 import { normalizeResponse, buildSeries } from './data/normalize.js';
 import { loadIndex, loadRegion } from './data/region.js';
@@ -63,14 +64,14 @@ async function run(cfg, region, view, index) {
   view.scene.add(lights.hemi, lights.sun);
 
   // dado da região: a mesma regra de sempre (ao vivo, cache, demo), com a grade e a versão dela; a fixture só existe do RS
-  const loadData = (r, signal) => loadWeather({
-    signal, mode: cfg.dados === 'fixture' && r.id !== 'RS' ? 'live' : cfg.dados, grid: r.grid, gridVersion: r.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
+  const loadData = (r, signal, onWait) => loadWeather({
+    signal, onWait, mode: cfg.dados === 'fixture' && r.id !== 'RS' ? 'live' : cfg.dados, grid: r.grid, gridVersion: r.gridVersion, nowUnix: Math.floor(Date.now() / 1000),
     deps: {
       fetchForecast, loadCache, saveCache, syntheticSeries: (g, start) => syntheticSeries(g, start, r.proj),
       loadFixture: async () => buildSeries(r.grid, normalizeResponse(await (await fetch('./assets/fixture.json')).json())),
     },
   });
-  const data = await loadData(region);
+  const data = await loadData(region, undefined, createWaitNotice(document.getElementById('loading')));   // a abertura espera a janela da API no próprio indicador
   // no celular o painel do município fica logo acima do rodapé, que muda de altura ao empilhar
   new ResizeObserver(([e]) => document.documentElement.style.setProperty('--tl-h', `${Math.ceil(e.borderBoxSize?.[0]?.blockSize ?? e.target.offsetHeight)}px`)).observe(document.getElementById('timeline'));
 

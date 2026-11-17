@@ -51,7 +51,6 @@ test('junta os lotes na ordem de p mesmo se resolverem fora de ordem', async () 
 });
 for (const [name, mutate] of [
   ['HTTP 400', (r, n) => (n === 3 ? { ok: false, status: 400, json: async () => ({ error: true, reason: 'bad' }) } : r)],
-  ['HTTP 429', (r, n) => (n === 1 ? { ok: false, status: 429, json: async () => ({}) } : r)],
   ['corpo error:true com 200', (r, n) => (n === 2 ? { ok: true, status: 200, json: async () => ({ error: true, reason: 'limite' }) } : r)],
   ['lote com 49 locais', (r, n, body) => (n === 2 ? { ok: true, status: 200, json: async () => body.slice(1) } : r)],
   ['JSON inválido', (r, n) => (n === 4 ? { ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } } : r)],
@@ -90,4 +89,57 @@ test('Final#1: signal já abortado não dispara nenhum lote', async () => {
   const { impl, st } = fakeFetch();
   await assert.rejects(fetchForecast(grid, { fetchImpl: impl, signal: ctl.signal }));
   assert.equal(st.calls, 0);
+});
+
+// ---- 429: o limite por minuto da API não é falha, é espera ----
+const r429 = (resetInSec) => ({ ok: false, status: 429, headers: { get: (k) => (resetInSec != null && /ratelimit-reset/i.test(k) ? String(Date.now() / 1000 + resetInSec) : null) }, json: async () => ({ error: true, reason: 'limite' }) });
+const fast = { waitPadMs: 0, waitDefaultMs: 80 };
+test('429 no 3º lote: espera o X-RateLimit-Reset, refaz o lote e entrega a série completa', async () => {
+  const f = fakeFetch({ mutate: (r, n) => (n === 3 ? r429(0.2) : r) }), ok = new Map(), waits = [];
+  const impl = async (url, o) => { const res = await f.impl(url, o); if (res.ok) ok.set(url, (ok.get(url) ?? 0) + 1); return res; };
+  const t0 = Date.now();
+  const s = await fetchForecast(grid, { fetchImpl: impl, waitPadMs: 0, onWait: (w) => waits.push(w) });
+  assert.ok(Date.now() - t0 >= 150, 'esperou a janela');
+  assert.equal(s.nP, grid.nP); for (let p = 0; p < grid.nP; p++) assert.equal(s.precip[p * 2], p);
+  assert.equal(ok.size, 11); assert.ok([...ok.values()].every((v) => v === 1), 'cada lote recebido uma vez');
+  assert.equal(waits.length, 2); assert.ok(waits[0].until > Date.now() - 1000 && waits[0].until <= t0 + 400); assert.equal(waits[1], null);
+});
+test('429: soma 1 s ao instante do cabeçalho', async () => {
+  const f = fakeFetch({ mutate: (r, n) => (n === 1 ? r429(0) : r) }), waits = [], t0 = Date.now();
+  await fetchForecast(grid, { fetchImpl: f.impl, onWait: (w) => waits.push(w) });
+  assert.ok(waits[0].until >= t0 + 900 && waits[0].until <= Date.now() + 1100);
+});
+test('429 sem o cabeçalho: espera o padrão', async () => {
+  const f = fakeFetch({ mutate: (r, n) => (n === 2 ? r429(null) : r) }), waits = [], t0 = Date.now();
+  const s = await fetchForecast(grid, { fetchImpl: f.impl, ...fast, onWait: (w) => waits.push(w) });
+  assert.equal(s.nP, grid.nP); assert.ok(Date.now() - t0 >= 70); assert.ok(waits[0].until >= t0 + 70 && waits[0].until <= t0 + 400);
+});
+test('429 em várias requisições da mesma janela: uma espera só', async () => {
+  const f = fakeFetch({ delay: () => 5, mutate: (r, n) => (n <= 4 ? r429(null) : r) }), waits = [];
+  const s = await fetchForecast(grid, { fetchImpl: f.impl, ...fast, onWait: (w) => waits.push(w) });
+  assert.equal(s.nP, grid.nP); assert.equal(waits.length, 2);
+});
+test('429 em três janelas seguidas rejeita', async () => {
+  const f = fakeFetch({ mutate: () => r429(null) }), waits = [];
+  await assert.rejects(fetchForecast(grid, { fetchImpl: f.impl, ...fast, onWait: (w) => waits.push(w) }), /429/);
+  assert.equal(waits.at(-1), null);
+});
+test('429 recusado, depois sucesso: o contador de janelas zera', async () => {
+  let refuse = new Set([1, 6, 12, 18]);                      // uma recusa de vez em quando, nunca três janelas seguidas
+  const f = fakeFetch({ mutate: (r, n) => (refuse.has(n) ? r429(null) : r) });
+  const s = await fetchForecast(grid, { fetchImpl: f.impl, ...fast, parallel: 1 });
+  assert.equal(s.nP, grid.nP);
+});
+test('signal abortado durante a espera rejeita na hora, sem novas requisições', async () => {
+  const f = fakeFetch({ mutate: (r, n) => (n === 3 ? r429(30) : r) }), ctl = new AbortController(), waits = [];
+  const p = fetchForecast(grid, { fetchImpl: f.impl, signal: ctl.signal, onWait: (w) => { waits.push(w); if (w) setTimeout(() => ctl.abort(), 20); } });
+  const calls0 = () => f.st.calls;
+  await assert.rejects(p, (e) => e.name === 'AbortError');
+  const c = calls0(); await new Promise((r) => setTimeout(r, 100)); assert.equal(f.st.calls, c);
+  assert.equal(waits.at(-1), null);
+});
+test('o tempo-limite por lote não conta a espera', async () => {
+  const f = fakeFetch({ mutate: (r, n) => (n === 1 ? r429(null) : r) });
+  const s = await fetchForecast(grid, { fetchImpl: f.impl, waitDefaultMs: 150, waitPadMs: 0, timeoutMs: 60 });
+  assert.equal(s.nP, grid.nP);
 });

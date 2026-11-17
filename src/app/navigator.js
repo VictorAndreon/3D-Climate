@@ -6,18 +6,20 @@ import { framing } from '../render/scene.js';
 import { regionSearch } from '../ui/region-nav.js';
 import { parseConfig, DEFAULT_REGION } from '../ui/config.js';
 import { createSession } from './session.js';
+import { createWaitNotice } from '../ui/wait.js';
 
 const MSG_MS = 5000;
 const DIVE_S = 1.1;
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * loadData(region, signal) → data (a mesma forma de loadWeather); sessionDeps: { lights }, repassado a cada sessão;
+ * loadData(region, signal, onWait) → data (a mesma forma de loadWeather); sessionDeps: { lights }, repassado a cada sessão;
  * onSession(session) roda a cada sessão nova (a primeira inclusive), no mesmo quadro da troca.
  */
 export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps, onSession = () => {} }) {
   const ufs = index.map((r) => r.id);
   let current = null, reqId = 0, diving = false, swapChain = Promise.resolve(), msgTimer = 0;
+  const waitNotice = createWaitNotice(document.getElementById('api-wait'), { hide: true, flag: document.body });   // "aguardando a API…" ao entrar num estado
   const loads = new Map();                                   // sigla -> { ctl, promise }: carga em voo de cada região
   const hasCam = () => new URLSearchParams(location.search).has('cam');   // cam= fixa a vista (roteiros): sem voo de abertura
 
@@ -40,10 +42,10 @@ export function createNavigator({ view, stage, index, cfg, loadData, sessionDeps
     let l = loads.get(id);
     if (l) return l.promise;
     const ctl = new AbortController();
-    const promise = (async () => { const region = await loadRegion(info); return { region, data: await loadData(region, ctl.signal) }; })();
+    const promise = (async () => { const region = await loadRegion(info); return { region, data: await loadData(region, ctl.signal, waitNotice) }; })();
     l = { ctl, promise };
     loads.set(id, l);
-    const drop = () => { if (loads.get(id) === l) loads.delete(id); };
+    const drop = () => { if (loads.get(id) === l) loads.delete(id); waitNotice(null); };
     promise.then(drop, drop);
     return promise;
   }

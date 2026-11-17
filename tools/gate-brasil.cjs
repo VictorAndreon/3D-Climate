@@ -1,10 +1,12 @@
-// Portão do Brasil como região de abertura: abre em BR (887 pontos, 1°), tooltip com o nome do estado, clique/toque num estado
+// Portão do Brasil como região de abertura: abre em BR (429 pontos, 1,5°), tooltip com o nome do estado, clique/toque num estado
 // entra nele NO LUGAR (sem recarregar a página), "← Brasil" volta, busca nacional navega, o histórico do navegador funciona,
 // a hora e o play são mantidos, rajadas valem pelo último pedido, nada vaza, falha ao entrar não troca, e o botão não cobre
 // busca, selo nem menu de debug.
 const { serve, launch, open } = require('./lib.cjs');
 
 const UFS27 = ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal', 'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul', 'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí', 'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia', 'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins'];
+/** Coordenada na grade de 1,5° do Brasil (os estados usam passos menores: um lote deles nunca cai todo nela). */
+const onBrGrid = (v) => Math.abs(Number(v) / 1.5 - Math.round(Number(v) / 1.5)) < 1e-6;
 const READY = () => document.documentElement.dataset.ready === '1';
 
 (async () => {
@@ -48,7 +50,7 @@ const READY = () => document.documentElement.dataset.ready === '1';
   {
     const { page, errors } = await open(browser, srv.url, 'demo=1&debug=1', { timeout: 120000 });
     check('BR: região BR', await page.evaluate(() => __rs.region.id) === 'BR');
-    check('BR: 887 pontos a 1°', await page.evaluate(() => __rs.grid.nP === 887 && __rs.grid.step === 1));
+    check('BR: 429 pontos a 1,5° (teto de 550 da API)', await page.evaluate(() => __rs.grid.nP === 429 && __rs.grid.step === 1.5));
     check('BR: #region-back oculto', await page.evaluate(() => document.getElementById('region-back').hidden));
     check('BR: #city oculto', await page.evaluate(() => document.getElementById('city').hidden));
     check('BR: busca visível', await page.evaluate(() => !document.getElementById('search').hidden));
@@ -250,7 +252,7 @@ const READY = () => document.documentElement.dataset.ready === '1';
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.route('https://api.open-meteo.com/**', (route) => {
       const sp = new URL(route.request().url()).searchParams, la = sp.get('latitude').split(','), lo = sp.get('longitude').split(',');
-      if (![...la, ...lo].every((v) => Number.isInteger(Number(v)))) return route.abort('failed');       // grade de 0,25°: é um estado
+      if (![...la, ...lo].every(onBrGrid)) return route.abort('failed');       // fora da grade de 1,5° do Brasil: é um estado
       const start = Math.floor(Date.now() / 3600000) * 3600, n = 168, arr = (v) => Array.from({ length: n }, () => v);
       const body = la.map((v, i) => ({ latitude: +v, longitude: +lo[i], hourly: { time: Array.from({ length: n }, (_, h) => start + h * 3600), cloud_cover_low: arr(30), cloud_cover_mid: arr(20), cloud_cover_high: arr(10), precipitation: arr(0), weather_code: arr(1), wind_speed_10m: arr(10), wind_direction_10m: arr(90) } }));
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.length === 1 ? body[0] : body) });
@@ -332,12 +334,12 @@ const READY = () => document.documentElement.dataset.ready === '1';
 
 
   // ---------- revisão final: cargas duplicadas ou superadas, voo de abertura, relevo, histórico ----------
-  /** API do tempo falsa: o Brasil (graus inteiros) e os estados respondem; `slow(url)` atrasa respostas; `seen` registra tudo. */
+  /** API do tempo falsa: o Brasil (grade de 1,5°) e os estados respondem; `slow(url)` atrasa respostas; `seen` registra tudo. */
   const mockApi = async (page, { slow = () => 0, failStates = false } = {}) => {
     const seen = [];
     await page.route('https://api.open-meteo.com/**', async (route) => {
       const url = route.request().url(), sp = new URL(url).searchParams, la = sp.get('latitude').split(','), lo = sp.get('longitude').split(',');
-      const isState = ![...la, ...lo].every((v) => Number.isInteger(Number(v)));
+      const isState = ![...la, ...lo].every(onBrGrid);
       const meanLat = la.reduce((a, v) => a + Number(v), 0) / la.length, meanLon = lo.reduce((a, v) => a + Number(v), 0) / lo.length;
       const uf = !isState ? 'BR' : meanLon < -56 ? 'AM' : meanLat < -25.6 ? 'SC' : 'SP';
       seen.push(uf);
@@ -446,7 +448,7 @@ const READY = () => document.documentElement.dataset.ready === '1';
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     const { page, errors } = await open(ctx, srv.url, 'demo=1&debug=1&cam=top', { timeout: 120000 });
-    check('celular: BR com 887 pontos', await page.evaluate(() => __rs.region.id === 'BR' && __rs.grid.nP === 887));
+    check('celular: BR com 429 pontos', await page.evaluate(() => __rs.region.id === 'BR' && __rs.grid.nP === 429));
     const sp = await screenOf(page, 'São Paulo');
     await page.touchscreen.tap(sp.x, sp.y);
     await after(page, ['uf=SP']);

@@ -6,17 +6,17 @@ export const STALE_RETRY = 900;          // desatualizado: nova tentativa no má
 /** Promessa que desiste depois de `ms` devolvendo `fallback` (IndexedDB que nunca responde não trava a carga). */
 const within = (p, ms, fallback) => Promise.race([Promise.resolve(p).catch(() => fallback), new Promise((r) => setTimeout(() => r(fallback), ms))]);
 
-/** Recarregar a página? Ao vivo/cache: dado com mais de 1 h. Desatualizado: 15 min desde a carga. Demo/fixture: nunca. */
+/** Recarregar a página? Ao vivo/cache: dado com mais de 1 h. Desatualizado: 15 min desde a carga. Demo-fallback (falha de rede): como o desatualizado. Demo/fixture: nunca. */
 export function shouldReload(status, nowUnix, loadedAtUnix) {
   if (status.kind === 'live' || status.kind === 'cache') return nowUnix - status.fetchedAt > CACHE_TTL;
-  if (status.kind === 'stale') return nowUnix - loadedAtUnix > STALE_RETRY;
+  if (status.kind === 'stale' || status.kind === 'demo-fallback') return nowUnix - loadedAtUnix > STALE_RETRY;
   return false;
 }
 
 const hourFloor = (unix) => Math.floor(unix / 3600) * 3600;
 const covers = (series, nowUnix) => series.times[series.nT - 1] >= nowUnix;
 
-export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cacheTimeoutMs = 1500, signal }) {
+export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cacheTimeoutMs = 1500, signal, onWait }) {
   if (mode === 'demo') return { series: deps.syntheticSeries(grid, hourFloor(nowUnix)), status: { kind: 'demo', fetchedAt: nowUnix }, nowUnix };
   if (mode === 'fixture') {
     const series = await deps.loadFixture();
@@ -28,7 +28,7 @@ export async function loadWeather({ mode, grid, gridVersion, nowUnix, deps, cach
   if (cache && (cache.series?.nP !== grid.nP || !covers(cache.series, nowUnix))) cache = null;   // outra grade ou série que já terminou
   if (cache && nowUnix - cache.fetchedAt < CACHE_TTL) return { series: cache.series, status: { kind: 'cache', fetchedAt: cache.fetchedAt }, nowUnix };
   try {
-    const series = await deps.fetchForecast(grid, { signal });
+    const series = await deps.fetchForecast(grid, { signal, onWait });
     if (signal?.aborted) throw new DOMException('carga abortada', 'AbortError');
     await within(deps.saveCache(gridVersion, series, nowUnix), cacheTimeoutMs, null);   // sem cache: segue ao vivo
     return { series, status: { kind: 'live', fetchedAt: nowUnix }, nowUnix };

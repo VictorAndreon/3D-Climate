@@ -15,15 +15,15 @@ test('RS: projeção, grade, relevo e municípios', async () => {
   assert.equal(r.tz, 'America/Sao_Paulo'); assert.equal(r.gridVersion, 'g1:-58:-34.25:36x31:546');
   assert.equal(r.munUrl, './assets/regions/RS-mun.json'); assert.ok(r.geo.outline.length > 0);
 });
-test('BR: grade de 1°, sem municípios nem relevo', async () => {
+test('BR: grade de 1,5° (teto de pontos), sem municípios nem relevo', async () => {
   const r = await load('BR');
-  assert.equal(r.grid.step, 1); assert.equal(r.hasCities, false); assert.equal(r.hasRelief, false); assert.equal(r.munUrl, null);
+  assert.equal(r.grid.step, 1.5); assert.equal(r.hasCities, false); assert.equal(r.hasRelief, false); assert.equal(r.munUrl, null);
 });
 test('AM: bounds do estado cabe em ~80 unidades', async () => {
   const { bounds: b } = await load('AM');
   const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
-  assert.ok(w > 60 && w < 80, `largura ${w}`);
-  assert.ok(d > 40 && d < 80, `profundidade ${d}`);            // AM é mais largo que fundo: 60..80 só vale para o lado maior
+  assert.ok(w > 60 && w < 85, `largura ${w}`);
+  assert.ok(d > 40 && d < 80, `profundidade ${d}`);            // AM é mais largo que fundo; o contorno ganha uma célula de folga, e a do AM (0,6°) é maior que a de 0,25°
   assert.ok(Math.abs(b.minX + b.maxX) < 1, 'a projeção está centrada no estado');
 });
 test('só o RS tem relevo', async () => { assert.equal((await load('SP')).hasRelief, false); assert.equal((await load('SP')).hasCities, true); });
